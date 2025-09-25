@@ -26,7 +26,7 @@ async def startup_event():
     print("Loading YOLO model...")
     try:
         # Load YOLOv8n model (YOLO11 may not be available yet, using v8 as example)
-        model = YOLO('yolov8n.pt')  # This will download if not present
+        model = YOLO('/home/humnoi1/Documents/Model/best.pt')  # This will download if not present
         # Set to evaluation mode and move to GPU if available
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         model.to(device)
@@ -79,7 +79,7 @@ async def infer_eye(file: UploadFile = File(...)):
             return {
                 "detections": detections,
                 "time_ms": processing_time * 1000,
-                "model_name": "YOLOv8n",
+                "model_name": "Eye Detection Custom Model",
                 "image_size": [int(img.shape[1]), int(img.shape[0])]  # width, height
             }
         else:

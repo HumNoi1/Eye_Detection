@@ -21,9 +21,33 @@ export default function FaceDetectionPage() {
   const [fps, setFps] = useState(0);
   const [latency, setLatency] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
   const [detections, setDetections] = useState<Detection[]>([]);
 
   const API_URL = 'http://localhost:8000/infer/eye';
+
+  const testBackendConnection = async () => {
+    try {
+      console.log('Testing backend connection...');
+      const response = await fetch(API_URL.replace('/infer/eye', '/docs'), {
+        method: 'GET',
+      });
+      if (response.ok) {
+        setBackendStatus('online');
+        console.log('Backend is online');
+      } else {
+        setBackendStatus('offline');
+        console.log('Backend responded but not ok:', response.status);
+      }
+    } catch (err) {
+      setBackendStatus('offline');
+      console.error('Backend connection failed:', err);
+    }
+  };
+
+  useEffect(() => {
+    testBackendConnection();
+  }, []);
 
   const startCamera = async () => {
     try {
@@ -88,8 +112,12 @@ export default function FaceDetectionPage() {
 
     // Convert to blob
     canvas.toBlob(async (blob) => {
-      if (!blob) return;
+      if (!blob) {
+        console.error('Failed to create blob from canvas');
+        return;
+      }
 
+      console.log('Sending frame to backend...');
       const formData = new FormData();
       formData.append('file', blob, 'frame.jpg');
 
@@ -101,9 +129,15 @@ export default function FaceDetectionPage() {
           body: formData,
         });
 
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const result = await response.json();
         const endTime = Date.now();
         setLatency(endTime - startTime);
+
+        console.log('Backend response:', result);
 
         if (result.error) {
           setError(result.error);
@@ -111,8 +145,10 @@ export default function FaceDetectionPage() {
         } else {
           setDetections(result.detections || []);
           setError(null);
+          setStatus('running');
         }
       } catch (err) {
+        console.error('Fetch error:', err);
         setError('Failed to send frame: ' + (err as Error).message);
         setStatus('error');
       }
@@ -277,13 +313,23 @@ export default function FaceDetectionPage() {
 
               {/* Status Display */}
               <div className="mb-4 space-y-2">
-                <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
-                  <div className={`size-2 rounded-full ${
-                    status === 'running' ? 'bg-green-500' :
-                    status === 'connecting' ? 'bg-yellow-500' :
-                    status === 'error' ? 'bg-red-500' : 'bg-gray-400'
-                  }`} />
-                  <span className="capitalize">{status}</span>
+                <div className="flex items-center justify-between">
+                  <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
+                    <div className={`size-2 rounded-full ${
+                      status === 'running' ? 'bg-green-500' :
+                      status === 'connecting' ? 'bg-yellow-500' :
+                      status === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                    }`} />
+                    <span className="capitalize">{status}</span>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
+                    <div className={`size-2 rounded-full ${
+                      backendStatus === 'online' ? 'bg-green-500' :
+                      backendStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
+                    }`} />
+                    <span>Backend: {backendStatus}</span>
+                  </div>
                 </div>
 
                 {status === 'running' && (
@@ -302,29 +348,40 @@ export default function FaceDetectionPage() {
 
               {/* Control Buttons */}
               <div className="grid gap-3">
-                {!isStreaming ? (
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={startCamera}
-                    className="h-11 w-full rounded-xl font-medium transition bg-foreground text-background hover:opacity-90 active:opacity-80"
+                    onClick={testBackendConnection}
+                    className="h-11 w-full rounded-xl font-medium transition bg-blue-500 text-white hover:bg-blue-600 active:opacity-80 text-sm"
                   >
-                    เปิดกล้อง
+                    Test Backend
                   </button>
-                ) : (
-                  <button
-                    onClick={stopCamera}
-                    className="h-11 w-full rounded-xl font-medium transition bg-red-500 text-white hover:bg-red-600 active:opacity-80"
-                  >
-                    ปิดกล้อง
-                  </button>
-                )}
+
+                  {!isStreaming ? (
+                    <button
+                      onClick={startCamera}
+                      className="h-11 w-full rounded-xl font-medium transition bg-foreground text-background hover:opacity-90 active:opacity-80"
+                    >
+                      เปิดกล้อง
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopCamera}
+                      className="h-11 w-full rounded-xl font-medium transition bg-red-500 text-white hover:bg-red-600 active:opacity-80"
+                    >
+                      ปิดกล้อง
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Instructions */}
               <div className="mt-6 text-xs opacity-70">
                 <p className="mb-2 font-medium">คำแนะนำ:</p>
                 <ul className="space-y-1">
+                  <li>• กด &quot;Test Backend&quot; เพื่อตรวจสอบการเชื่อมต่อ</li>
+                  <li>• ตรวจสอบว่า Backend รันที่ http://localhost:8000</li>
+                  <li>• เปิด Developer Tools (F12) เพื่อดู Console log</li>
                   <li>• อนุญาตให้เข้าถึงกล้องเมื่อเบราว์เซอร์ขอสิทธิ์</li>
-                  <li>• ตรวจสอบให้แน่ใจว่ากล้องไม่ถูกใช้งานโดยแอปอื่น</li>
                   <li>• ให้แสงสว่างเพียงพอสำหรับภาพที่ชัดเจน</li>
                 </ul>
               </div>
