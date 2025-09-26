@@ -18,11 +18,15 @@ app.add_middleware(
 )
 
 # Load YOLO model once at startup
-model_path = "/home/humnoi1/Documents/Model/best.pt"  # Assuming best.pt is for eye detection
+model_path = "best.pt"  # Assuming best.pt is for eye detection
 model = YOLO(model_path)
 #model.to('cpu')
 model.to('cuda' if torch.cuda.is_available() else 'cpu')
 model.eval()
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.post("/infer/eye")
 async def infer_eye(file: UploadFile = File(...)):

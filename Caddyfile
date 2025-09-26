@@ -1,0 +1,21 @@
+:8080
+
+# เสิร์ฟ frontend จากคอนเทนเนอร์ web
+@frontend {
+  not path /api*  # ทุกเส้นทางที่ไม่ขึ้นต้นด้วย /api
+}
+handle @frontend {
+  reverse_proxy web:3000
+}
+
+# ส่งต่อ /api ทั้งหมดไป backend
+handle_path /api* {
+  reverse_proxy api:8000
+}
+
+# (แนะนำ) เพิ่ม header เบื้องต้น
+header {
+  X-Frame-Options "DENY"
+  Referrer-Policy "strict-origin-when-cross-origin"
+  X-Content-Type-Options "nosniff"
+}

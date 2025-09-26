@@ -1,0 +1,36 @@
+services:
+  backend:
+    build: ./backend
+    container_name: api
+    environment:
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8000
+      - CORS_ORIGINS=https://example.com,https://*.trycloudflare.com
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    container_name: web
+    environment:
+      - NEXT_PUBLIC_API_BASE=/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:latest
+    container_name: edge
+    ports:
+      - "8080:8080"   # พอร์ตที่เราจะให้ cloudflared เข้ามา
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - backend
+      - frontend
