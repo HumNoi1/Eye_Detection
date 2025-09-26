@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useState, useEffect } from "react";
 
 interface Detection {
-  bbox: [number, number, number, number];
+  bbox: number[];
   label: string;
   confidence: number;
 }
@@ -11,207 +11,129 @@ interface Detection {
 export default function FaceDetectionPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(0);
-
-  const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<'ready' | 'connecting' | 'running' | 'error'>('ready');
   const [fps, setFps] = useState(0);
   const [latency, setLatency] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
+  const [error, setError] = useState('');
   const [detections, setDetections] = useState<Detection[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const frameCountRef = useRef(0);
+  const lastFpsTimeRef = useRef(Date.now());
 
-  const API_URL = 'http://localhost:8000/infer/eye';
-
-  const testBackendConnection = async () => {
+  const startCamera = async () => {
+    setStatus('connecting');
+    setError('');
     try {
-      console.log('Testing backend connection...');
-      const response = await fetch(API_URL.replace('/infer/eye', '/docs'), {
-        method: 'GET',
-      });
-      if (response.ok) {
-        setBackendStatus('online');
-        console.log('Backend is online');
-      } else {
-        setBackendStatus('offline');
-        console.log('Backend responded but not ok:', response.status);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current!.play();
+          setStatus('running');
+          startCapture();
+        };
       }
-    } catch (err) {
-      setBackendStatus('offline');
-      console.error('Backend connection failed:', err);
+    } catch (e) {
+      setStatus('error');
+      setError(e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
-  useEffect(() => {
-    testBackendConnection();
-  }, []);
-
-  const startCamera = async () => {
-    try {
-      setStatus('connecting');
-      setError(null);
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user'
-        }
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsStreaming(true);
-        setStatus('running');
-        startFrameCapture();
-      }
-    } catch (err) {
-      setError('Failed to access camera: ' + (err as Error).message);
-      setStatus('error');
-    }
+  const startCapture = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(captureFrame, 200);
   };
 
   const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    if (videoRef.current) {
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    setIsStreaming(false);
     setStatus('ready');
     setDetections([]);
     setFps(0);
     setLatency(0);
+    setError('');
+    setLogs([]);
   };
 
-  const captureAndSendFrame = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !isStreaming) return;
-
+  const captureFrame = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    if (!video || !canvas) return;
 
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size to video size
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    // Draw current video frame to canvas
+    // Draw video frame
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert to blob
-    canvas.toBlob(async (blob) => {
-      if (!blob) {
-        console.error('Failed to create blob from canvas');
-        return;
-      }
+    // Draw overlay
+    drawOverlay(ctx, detections);
 
-      console.log('Sending frame to backend...');
+    // Update FPS
+    frameCountRef.current++;
+    const now = Date.now();
+    const timeDiff = now - lastFpsTimeRef.current;
+    if (timeDiff >= 1000) {
+      setFps(Math.round((frameCountRef.current / timeDiff) * 1000));
+      frameCountRef.current = 0;
+      lastFpsTimeRef.current = now;
+    }
+
+    // Send to backend
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
       const formData = new FormData();
       formData.append('file', blob, 'frame.jpg');
-
-      const startTime = Date.now();
-
+      const start = Date.now();
       try {
-        const response = await fetch(API_URL, {
+        const res = await fetch('http://localhost:8000/infer/eye', {
           method: 'POST',
           body: formData,
         });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        const endTime = Date.now();
-        setLatency(endTime - startTime);
-
-        console.log('Backend response:', result);
-
-        if (result.error) {
-          setError(result.error);
-          setStatus('error');
-        } else {
-          setDetections(result.detections || []);
-          setError(null);
-          setStatus('running');
-        }
-      } catch (err) {
-        console.error('Fetch error:', err);
-        setError('Failed to send frame: ' + (err as Error).message);
-        setStatus('error');
+        const data = await res.json();
+        setLatency(Date.now() - start);
+        setDetections(data.detections);
+        // Optionally redraw overlay immediately
+        drawOverlay(ctx, data.detections);
+        const logEntry = data.detections.length > 0
+          ? `${new Date().toLocaleTimeString()}: ${data.detections.map((d: {label: string; confidence: number}) => `${d.label} (${d.confidence.toFixed(2)})`).join(', ')}`
+          : `${new Date().toLocaleTimeString()}: No detections`;
+        setLogs(prev => [...prev.slice(-9), logEntry]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Network error');
       }
     }, 'image/jpeg', 0.8);
-  }, [isStreaming, API_URL]);
-
-  const startFrameCapture = () => {
-    const captureFrame = () => {
-      const now = Date.now();
-      if (now - lastFrameTimeRef.current >= 200) { // 200ms interval
-        captureAndSendFrame();
-        lastFrameTimeRef.current = now;
-
-        // Calculate FPS
-        setFps(prev => prev * 0.9 + (1000 / (now - lastFrameTimeRef.current)) * 0.1);
-      }
-
-      if (isStreaming) {
-        animationFrameRef.current = requestAnimationFrame(captureFrame);
-      }
-    };
-
-    captureFrame();
   };
 
-  const drawOverlay = useCallback(() => {
-    if (!overlayCanvasRef.current || !videoRef.current) return;
-
-    const canvas = overlayCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size to match video
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-
-    // Clear previous drawings
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw detections
-    detections.forEach(detection => {
-      const [x1, y1, x2, y2] = detection.bbox;
-
-      // Draw bounding box
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
+  const drawOverlay = (ctx: CanvasRenderingContext2D, dets: Detection[]) => {
+    ctx.strokeStyle = 'Green';
+    ctx.lineWidth = 2;
+    ctx.font = '16px Arial';
+    ctx.fillStyle = 'Green';
+    dets.forEach((det) => {
+      const [x1, y1, x2, y2] = det.bbox;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-      // Draw label
-      ctx.fillStyle = '#00ff00';
-      ctx.font = '16px Arial';
-      const label = `${detection.label} ${(detection.confidence * 100).toFixed(1)}%`;
-      ctx.fillText(label, x1, y1 - 5);
+      ctx.fillText(`${det.label} ${det.confidence.toFixed(2)}`, x1, y1 - 5);
     });
-  }, [detections]);
+  };
 
   useEffect(() => {
-    drawOverlay();
-  }, [drawOverlay]);
-
-  useEffect(() => {
+    const video = videoRef.current;
     return () => {
-      stopCamera();
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
@@ -239,23 +161,23 @@ export default function FaceDetectionPage() {
 
           <div className="mt-10">
             <h1 className="text-4xl/tight font-semibold">
-              Camera Preview 📷
+              Eye Detection 📷
             </h1>
             <p className="mt-4 text-lg opacity-80">
-              ระบบกล้องแบบเรียลไทม์ สำหรับการแสดงผลวิดีโอจากกล้องหน้า
+              ระบบตรวจจับตาแบบเรียลไทม์ ด้วย YOLO และ AI
             </p>
             <div className="mt-8 grid gap-4">
               <div className="flex items-center gap-3">
                 <div className="size-2 rounded-full bg-green-500" />
-                <span className="text-sm opacity-70">แสดงผลแบบเรียลไทม์</span>
+                <span className="text-sm opacity-70">ตรวจจับตาแบบเรียลไทม์</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="size-2 rounded-full bg-blue-500" />
-                <span className="text-sm opacity-70">รองรับกล้องหน้า</span>
+                <span className="text-sm opacity-70">ใช้ YOLO11n บน GPU</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="size-2 rounded-full bg-purple-500" />
-                <span className="text-sm opacity-70">คุณภาพ HD</span>
+                <span className="text-sm opacity-70">แสดงผล overlay และสถิติ</span>
               </div>
             </div>
           </div>
@@ -268,41 +190,24 @@ export default function FaceDetectionPage() {
               {/* Logo / Title */}
               <div className="mb-6 text-center">
                 <div className="mx-auto mb-3 grid size-12 place-items-center rounded-xl border border-black/10 bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-md dark:border-white/15">
-                  <span className="text-lg">📷</span>
+                  <span className="text-lg">�️</span>
                 </div>
-                <h2 className="text-2xl font-semibold">Camera Preview</h2>
+                <h2 className="text-2xl font-semibold">Eye Detection</h2>
                 <p className="mt-1 text-sm opacity-80">
-                  เปิดกล้องเพื่อดูภาพแบบเรียลไทม์
+                  เปิดกล้องเพื่อตรวจจับตาแบบเรียลไทม์
                 </p>
               </div>
 
               {/* Camera Section */}
               <div className="mb-6">
                 <div className="relative mx-auto h-64 w-full overflow-hidden rounded-xl border-2 border-dashed border-black/20 bg-black/5 dark:border-white/20 dark:bg-white/5">
-                  {/* Video element */}
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                  {/* Canvas for overlay */}
-                  <canvas
-                    ref={overlayCanvasRef}
-                    className="absolute inset-0 h-full w-full pointer-events-none"
-                  />
-                  {/* Hidden canvas for frame capture */}
-                  <canvas
-                    ref={canvasRef}
-                    className="hidden"
-                  />
-
-                  {!isStreaming && (
-                    <div className="flex h-full items-center justify-center">
+                  <video ref={videoRef} className="hidden" />
+                  <canvas ref={canvasRef} className="h-full w-full object-cover" />
+                  {status === 'ready' && (
+                    <div className="absolute inset-0 flex h-full items-center justify-center">
                       <div className="text-center">
                         <div className="mx-auto mb-3 size-16 rounded-full bg-black/10 flex items-center justify-center dark:bg-white/10">
-                          <span className="text-2xl">📷</span>
+                          <span className="text-2xl">�️</span>
                         </div>
                         <p className="text-sm opacity-70">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
                       </div>
@@ -311,77 +216,52 @@ export default function FaceDetectionPage() {
                 </div>
               </div>
 
-              {/* Status Display */}
-              <div className="mb-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
-                    <div className={`size-2 rounded-full ${
-                      status === 'running' ? 'bg-green-500' :
-                      status === 'connecting' ? 'bg-yellow-500' :
-                      status === 'error' ? 'bg-red-500' : 'bg-gray-400'
-                    }`} />
-                    <span className="capitalize">{status}</span>
-                  </div>
-
-                  <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
-                    <div className={`size-2 rounded-full ${
-                      backendStatus === 'online' ? 'bg-green-500' :
-                      backendStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
-                    }`} />
-                    <span>Backend: {backendStatus}</span>
-                  </div>
+              {/* Stats */}
+              <div className="mb-4 grid grid-cols-2 gap-4 text-center">
+                <div>
+                  <p className="text-sm opacity-70">FPS</p>
+                  <p className="text-lg font-semibold">{fps}</p>
                 </div>
+                <div>
+                  <p className="text-sm opacity-70">Latency (ms)</p>
+                  <p className="text-lg font-semibold">{latency}</p>
+                </div>
+              </div>
 
-                {status === 'running' && (
-                  <div className="flex justify-between text-xs opacity-70">
-                    <span>FPS: {fps.toFixed(1)}</span>
-                    <span>Latency: {latency}ms</span>
-                  </div>
-                )}
+              {/* Status Display */}
+              <div className="mb-4 text-center">
+                <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
+                  <div className={`size-2 rounded-full ${status === 'running' ? 'bg-green-500' : status === 'connecting' ? 'bg-yellow-500' : status === 'error' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                  <span className="capitalize">{status}</span>
+                </div>
+                {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+              </div>
 
-                {error && (
-                  <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded">
-                    {error}
-                  </div>
-                )}
+              {/* Logs */}
+              <div className="mb-4">
+                <p className="text-sm opacity-70">Detection Logs</p>
+                <div className="max-h-32 overflow-y-auto bg-black/5 dark:bg-white/5 rounded p-2 text-xs">
+                  {logs.map((log, i) => <div key={i}>{log}</div>)}
+                </div>
               </div>
 
               {/* Control Buttons */}
               <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={testBackendConnection}
-                    className="h-11 w-full rounded-xl font-medium transition bg-blue-500 text-white hover:bg-blue-600 active:opacity-80 text-sm"
-                  >
-                    Test Backend
-                  </button>
-
-                  {!isStreaming ? (
-                    <button
-                      onClick={startCamera}
-                      className="h-11 w-full rounded-xl font-medium transition bg-foreground text-background hover:opacity-90 active:opacity-80"
-                    >
-                      เปิดกล้อง
-                    </button>
-                  ) : (
-                    <button
-                      onClick={stopCamera}
-                      className="h-11 w-full rounded-xl font-medium transition bg-red-500 text-white hover:bg-red-600 active:opacity-80"
-                    >
-                      ปิดกล้อง
-                    </button>
-                  )}
-                </div>
+                <button
+                  onClick={status === 'running' ? stopCamera : startCamera}
+                  disabled={status === 'connecting'}
+                  className="h-11 w-full rounded-xl font-medium transition bg-foreground text-background hover:opacity-90 active:opacity-80 disabled:opacity-50"
+                >
+                  {status === 'running' ? 'ปิดกล้อง' : 'เปิดกล้อง'}
+                </button>
               </div>
 
               {/* Instructions */}
               <div className="mt-6 text-xs opacity-70">
                 <p className="mb-2 font-medium">คำแนะนำ:</p>
                 <ul className="space-y-1">
-                  <li>• กด &quot;Test Backend&quot; เพื่อตรวจสอบการเชื่อมต่อ</li>
-                  <li>• ตรวจสอบว่า Backend รันที่ http://localhost:8000</li>
-                  <li>• เปิด Developer Tools (F12) เพื่อดู Console log</li>
                   <li>• อนุญาตให้เข้าถึงกล้องเมื่อเบราว์เซอร์ขอสิทธิ์</li>
+                  <li>• ตรวจสอบให้แน่ใจว่ากล้องไม่ถูกใช้งานโดยแอปอื่น</li>
                   <li>• ให้แสงสว่างเพียงพอสำหรับภาพที่ชัดเจน</li>
                 </ul>
               </div>
