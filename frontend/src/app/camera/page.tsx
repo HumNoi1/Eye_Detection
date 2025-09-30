@@ -1,141 +1,45 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-
-interface Detection {
-  bbox: number[];
-  label: string;
-  confidence: number;
-}
+import { useState, useRef } from 'react';
 
 export default function FaceDetectionPage() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState<'ready' | 'connecting' | 'running' | 'error'>('ready');
+  const [status, setStatus] = useState('ready');
   const [fps, setFps] = useState(0);
   const [latency, setLatency] = useState(0);
-  const [error, setError] = useState('');
-  const [detections, setDetections] = useState<Detection[]>([]);
-  const [logs, setLogs] = useState<string[]>([]);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const frameCountRef = useRef(0);
-  const lastFpsTimeRef = useRef(Date.now());
+  const [logs, setLogs] = useState<string[]>(['Waiting for camera...']);
+  const [predicted, setPredicted] = useState('');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const startCamera = async () => {
-    setStatus('connecting');
-    setError('');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current!.play();
-          setStatus('running');
-          startCapture();
-        };
+  const startCamera = () => {
+    if (wsRef.current) return;
+    wsRef.current = new WebSocket('ws://localhost:8000/ws');
+    wsRef.current.onopen = () => setStatus('connected');
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.error) {
+        setLogs(prev => [...prev, data.error]);
+        return;
       }
-    } catch (e) {
-      setStatus('error');
-      setError(e instanceof Error ? e.message : 'Unknown error');
-    }
-  };
-
-  const startCapture = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(captureFrame, 200);
-  };
-
-  const stopCamera = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStatus('ready');
-    setDetections([]);
-    setFps(0);
-    setLatency(0);
-    setError('');
-    setLogs([]);
-  };
-
-  const captureFrame = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Draw video frame
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Draw overlay
-    drawOverlay(ctx, detections);
-
-    // Update FPS
-    frameCountRef.current++;
-    const now = Date.now();
-    const timeDiff = now - lastFpsTimeRef.current;
-    if (timeDiff >= 1000) {
-      setFps(Math.round((frameCountRef.current / timeDiff) * 1000));
-      frameCountRef.current = 0;
-      lastFpsTimeRef.current = now;
-    }
-
-    // Send to backend
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const formData = new FormData();
-      formData.append('file', blob, 'frame.jpg');
-      const start = Date.now();
-      try {
-        const res = await fetch('http://localhost:8000/infer/eye', {
-          method: 'POST',
-          body: formData,
-        });
-        const data = await res.json();
-        setLatency(Date.now() - start);
-        setDetections(data.detections);
-        // Optionally redraw overlay immediately
-        drawOverlay(ctx, data.detections);
-        const logEntry = data.detections.length > 0
-          ? `${new Date().toLocaleTimeString()}: ${data.detections.map((d: {label: string; confidence: number}) => `${d.label} (${d.confidence.toFixed(2)})`).join(', ')}`
-          : `${new Date().toLocaleTimeString()}: No detections`;
-        setLogs(prev => [...prev.slice(-9), logEntry]);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Network error');
-      }
-    }, 'image/jpeg', 0.8);
-  };
-
-  const drawOverlay = (ctx: CanvasRenderingContext2D, dets: Detection[]) => {
-    ctx.strokeStyle = 'Green';
-    ctx.lineWidth = 2;
-    ctx.font = '16px Arial';
-    ctx.fillStyle = 'Green';
-    dets.forEach((det) => {
-      const [x1, y1, x2, y2] = det.bbox;
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-      ctx.fillText(`${det.label} ${det.confidence.toFixed(2)}`, x1, y1 - 5);
-    });
-  };
-
-  useEffect(() => {
-    const video = videoRef.current;
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (video?.srcObject) {
-        (video.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+      setFps(data.fps);
+      setLatency(data.latency);
+      if (data.log) setLogs(prev => [...prev.slice(-9), data.log]);
+      setPredicted(data.predicted);
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = 'data:image/jpeg;base64,' + data.frame;
+        }
       }
     };
-  }, []);
+    wsRef.current.onclose = () => setStatus('disconnected');
+    wsRef.current.onerror = () => setStatus('error');
+  };
 
   return (
     <div className="relative min-h-dvh overflow-hidden">
@@ -149,7 +53,7 @@ export default function FaceDetectionPage() {
         </div>
       </div>
 
-      <main className="mx-auto grid min-h-dvh w-full max-w-6xl grid-cols-1 lg:grid-cols-2">
+      <main className="mx-auto grid min-h-dvh w-full max-w-6xl grid-cols-1 lg:grid-cols-3">
         {/* Left: marketing / brand */}
         <section className="order-2 lg:order-1 hidden lg:flex flex-col justify-center p-10">
           <a
@@ -190,7 +94,7 @@ export default function FaceDetectionPage() {
               {/* Logo / Title */}
               <div className="mb-6 text-center">
                 <div className="mx-auto mb-3 grid size-12 place-items-center rounded-xl border border-black/10 bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-md dark:border-white/15">
-                  <span className="text-lg">�️</span>
+                  <span className="text-lg">👁️</span>
                 </div>
                 <h2 className="text-2xl font-semibold">Eye Detection</h2>
                 <p className="mt-1 text-sm opacity-80">
@@ -201,18 +105,16 @@ export default function FaceDetectionPage() {
               {/* Camera Section */}
               <div className="mb-6">
                 <div className="relative mx-auto h-64 w-full overflow-hidden rounded-xl border-2 border-dashed border-black/20 bg-black/5 dark:border-white/20 dark:bg-white/5">
-                  <video ref={videoRef} className="hidden" />
-                  <canvas ref={canvasRef} className="h-full w-full object-cover" />
-                  {status === 'ready' && (
-                    <div className="absolute inset-0 flex h-full items-center justify-center">
-                      <div className="text-center">
-                        <div className="mx-auto mb-3 size-16 rounded-full bg-black/10 flex items-center justify-center dark:bg-white/10">
-                          <span className="text-2xl">�️</span>
-                        </div>
-                        <p className="text-sm opacity-70">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
+                  <video className="hidden" />
+                  <canvas ref={canvasRef} className="h-full w-full object-cover" width={640} height={480} />
+                  <div className="absolute inset-0 flex h-full items-center justify-center">
+                    <div className="text-center">
+                      <div className="mx-auto mb-3 size-16 rounded-full bg-black/10 flex items-center justify-center dark:bg-white/10">
+                        <span className="text-2xl">📷</span>
                       </div>
+                      <p className="text-sm opacity-70">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
 
@@ -231,16 +133,17 @@ export default function FaceDetectionPage() {
               {/* Status Display */}
               <div className="mb-4 text-center">
                 <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border border-black/10 dark:border-white/15">
-                  <div className={`size-2 rounded-full ${status === 'running' ? 'bg-green-500' : status === 'connecting' ? 'bg-yellow-500' : status === 'error' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                  <div className={`size-2 rounded-full ${status === 'connected' ? 'bg-green-500' : status === 'error' ? 'bg-red-500' : 'bg-gray-400'}`} />
                   <span className="capitalize">{status}</span>
                 </div>
-                {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
               </div>
+
+
 
               {/* Logs */}
               <div className="mb-4">
                 <p className="text-sm opacity-70">Detection Logs</p>
-                <div className="max-h-32 overflow-y-auto bg-black/5 dark:bg-white/5 rounded p-2 text-xs">
+                <div className="max-h-48 overflow-y-auto bg-black/5 dark:bg-white/5 rounded p-2 text-xs">
                   {logs.map((log, i) => <div key={i}>{log}</div>)}
                 </div>
               </div>
@@ -248,11 +151,17 @@ export default function FaceDetectionPage() {
               {/* Control Buttons */}
               <div className="grid gap-3">
                 <button
-                  onClick={status === 'running' ? stopCamera : startCamera}
-                  disabled={status === 'connecting'}
+                  onClick={() => {
+                    if (status === 'connected') {
+                      wsRef.current?.close();
+                      setStatus('disconnected');
+                    } else {
+                      startCamera();
+                    }
+                  }}
                   className="h-11 w-full rounded-xl font-medium transition bg-foreground text-background hover:opacity-90 active:opacity-80 disabled:opacity-50"
                 >
-                  {status === 'running' ? 'ปิดกล้อง' : 'เปิดกล้อง'}
+                  {status === 'connected' ? 'ปิดกล้อง' : 'เปิดกล้อง'}
                 </button>
               </div>
 
@@ -265,6 +174,16 @@ export default function FaceDetectionPage() {
                   <li>• ให้แสงสว่างเพียงพอสำหรับภาพที่ชัดเจน</li>
                 </ul>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Predicted Section */}
+        <section className="order-3 lg:order-3 grid place-items-center p-6 lg:p-10">
+          <div className="w-full max-w-md">
+            <div className="rounded-2xl border border-black/10 bg-white/70 p-6 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/30">
+              <h3 className="text-xl font-semibold text-center mb-4">Predicted Eye Type</h3>
+              <div className="text-center text-2xl font-bold">{predicted || 'None'}</div>
             </div>
           </div>
         </section>
