@@ -1,0 +1,357 @@
+/* Modern Gradient & Glassmorphism Styles */
+:root {
+  /* Main Colors - Purple/Blue Gradient */
+  --gradient-purple: #667eea;
+  --gradient-violet: #764ba2;
+  --accent-pink: #f093fb;
+  --accent-blue: #4facfe;
+  --accent-cyan: #00f2fe;
+  
+  /* Semantic Colors */
+  --success-gradient: linear-gradient(135deg, #00f2fe, #4facfe);
+  --warning-gradient: linear-gradient(135deg, #ffd89b, #f6d365);
+  --error-gradient: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+/* Button Styles */
+/* Dark Glass Morphism Buttons */
+.btn-primary {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(15px) saturate(150%);
+  -webkit-backdrop-filter: blur(15px) saturate(150%);
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(240, 147, 251, 0.3);
+  padding: 0.75rem 2rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px 0 rgba(240, 147, 251, 0.25),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 20px 40px -5px rgba(240, 147, 251, 0.6);
+}
+
+.btn-primary:hover::before {
+  left: 100%;
+}
+
+.btn-primary:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.btn-secondary {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(15px) saturate(150%);
+  -webkit-backdrop-filter: blur(15px) saturate(150%);
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(79, 172, 254, 0.3);
+  padding: 0.75rem 2rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px 0 rgba(79, 172, 254, 0.25),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(79, 172, 254, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(79, 172, 254, 0.4),
+              0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Dark Glass Card Styles */
+.eye-card {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.5rem;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  backdrop-filter: blur(25px) saturate(150%);
+  -webkit-backdrop-filter: blur(25px) saturate(150%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.eye-card:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+.eye-card-dark {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(150%);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Dark Glass Status Pills */
+.status-connected {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(15px) saturate(150%);
+  -webkit-backdrop-filter: blur(15px) saturate(150%);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.4);
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3),
+              0 0 0 1px rgba(0, 242, 254, 0.1) inset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-disconnected {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(15px) saturate(150%);
+  -webkit-backdrop-filter: blur(15px) saturate(150%);
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-error {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(15px) saturate(150%);
+  -webkit-backdrop-filter: blur(15px) saturate(150%);
+  color: #f093fb;
+  border: 1px solid rgba(240, 147, 251, 0.4);
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3),
+              0 0 0 1px rgba(240, 147, 251, 0.1) inset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Dark Glass Progress Bar */
+.eye-progress {
+  height: 0.5rem;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+  backdrop-filter: blur(10px);
+}
+
+.eye-progress-bar {
+  height: 100%;
+  background: rgba(240, 147, 251, 0.5);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 15px rgba(240, 147, 251, 0.5),
+              0 0 0 1px rgba(240, 147, 251, 0.3) inset;
+  backdrop-filter: blur(5px);
+}
+
+@keyframes shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 100% 0; }
+}
+
+/* Dark Glass Person Card */
+.person-card {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.person-card:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(240, 147, 251, 0.4);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 40px 0 rgba(240, 147, 251, 0.3),
+              0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+.person-card-top {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(0, 242, 254, 0.5);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 25px rgba(0, 242, 254, 0.3),
+              0 0 0 1px rgba(0, 242, 254, 0.1) inset;
+}
+
+/* Dark Glass Avatar */
+.eye-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 2px solid rgba(240, 147, 251, 0.4);
+  color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  transition: all 0.3s;
+}
+
+.eye-avatar:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(240, 147, 251, 0.6);
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4),
+              0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Dark Glass Stat Box */
+.stat-box {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.stat-box:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+.stat-value {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.2;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 20px rgba(240, 147, 251, 0.4);
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Dark Glass Log Panel */
+.log-panel {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  max-height: 400px;
+  overflow-y: auto;
+  backdrop-filter: blur(25px) saturate(150%);
+  -webkit-backdrop-filter: blur(25px) saturate(150%);
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 147, 251, 0.4) rgba(0, 0, 0, 0.3);
+}
+
+.log-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.log-panel::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #f093fb, #4facfe);
+  border-radius: 10px;
+}
+
+.log-entry {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border-left: 2px solid;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.log-entry:hover {
+  background: rgba(0, 0, 0, 0.6);
+  transform: translateX(4px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.log-entry.info {
+  border-left-color: rgba(79, 172, 254, 0.6);
+  box-shadow: 0 2px 10px rgba(79, 172, 254, 0.1),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.success {
+  border-left-color: rgba(0, 242, 254, 0.6);
+  box-shadow: 0 2px 10px rgba(0, 242, 254, 0.1),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.warning {
+  border-left-color: rgba(245, 87, 108, 0.6);
+  box-shadow: 0 2px 10px rgba(245, 87, 108, 0.1),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.error {
+  border-left-color: rgba(240, 147, 251, 0.6);
+  box-shadow: 0 2px 10px rgba(240, 147, 251, 0.1),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}

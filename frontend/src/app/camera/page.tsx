@@ -256,12 +256,12 @@ export default function FaceDetectionPage() {
 
   /** ===== Render ===== */
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-background text-foreground">
-      {/* Background: gradient + blobs */}
+    <div className="relative min-h-dvh overflow-hidden text-white" style={{ background: 'linear-gradient(to bottom right, #0a0a12, #16213e, #0a0a12)' }}>
+      {/* Background: dark animated gradient blobs */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(59,130,246,0.22),transparent),radial-gradient(900px_500px_at_100%_20%,rgba(34,197,94,0.18),transparent),linear-gradient(to_bottom,var(--color-background),var(--color-background))]" />
-        <div className="absolute -left-24 top-24 size-[360px] rounded-full blur-3xl opacity-30 bg-gradient-to-tr from-indigo-500 to-sky-400" />
-        <div className="absolute right-0 -bottom-24 size-[420px] rounded-full blur-3xl opacity-20 bg-gradient-to-tr from-emerald-500 to-teal-400" />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom right, #0a0a12, #16213e, #0a0a12)' }} />
+        <div className="absolute -left-24 top-24 size-[360px] rounded-full blur-3xl opacity-20 animate-pulse" style={{ background: 'radial-gradient(circle, rgba(240,147,251,0.3), transparent 70%)' }} />
+        <div className="absolute right-0 -bottom-24 size-[420px] rounded-full blur-3xl opacity-15 animate-pulse" style={{ background: 'radial-gradient(circle, rgba(79,172,254,0.25), transparent 70%)', animationDelay: '1s' }} />
         <div className="absolute right-16 top-16 hidden sm:block">
           <Sparkles />
         </div>
@@ -270,7 +270,13 @@ export default function FaceDetectionPage() {
       <main className="mx-auto grid min-h-dvh w-full max-w-7xl grid-cols-1 gap-8 p-6 lg:grid-cols-3 lg:gap-10">
         {/* กล้องใหญ่ เต็ม 2 คอลัมน์ */}
         <section className="lg:col-span-2">
-          <div className="rounded-3xl border border-black/10 bg-white/70 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/25">
+          <div className="rounded-3xl shadow-2xl" style={{ 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(30px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(30px) saturate(150%)',
+            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset'
+          }}>
             <div className="flex items-center justify-between gap-4 px-6 pt-5">
               <h2 className="text-xl font-semibold">Live Camera</h2>
               <StatusPill status={status} />
@@ -302,14 +308,14 @@ export default function FaceDetectionPage() {
                   {status === "connected" ? (
                     <button
                       onClick={disconnect}
-                      className="rounded-xl border border-foreground px-5 py-2 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
+                      className="btn-secondary rounded-xl px-5 py-2 text-white transition active:opacity-80"
                     >
                       หยุดสตรีม
                     </button>
                   ) : (
                     <button
                       onClick={connect}
-                      className="rounded-xl border border-foreground px-5 py-2 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
+                      className="btn-primary rounded-xl px-5 py-2 text-white transition active:opacity-80"
                     >
                       เริ่มสตรีม
                     </button>
@@ -343,13 +349,19 @@ export default function FaceDetectionPage() {
 
         {/* แสดงผลทาย: แยก "กลุ่มใครกลุ่มมัน" เป็นการ์ดรายบุคคล */}
         <section className="lg:col-span-1">
-          <div className="rounded-3xl border border-black/10 bg-white/70 p-6 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/25">
+          <div className="rounded-3xl p-6 shadow-2xl" style={{ 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(30px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(30px) saturate(150%)',
+            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset'
+          }}>
             <h3 className="text-lg font-semibold">Recognition</h3>
 
             {/* Top match */}
-            <div className="mt-4 rounded-2xl border border-black/10 p-4 dark:border-white/15">
-              <p className="text-sm opacity-70">Top Prediction</p>
-              <div className="mt-1 text-2xl font-bold">{streamData.predicted || "None"}</div>
+            <div className="mt-4 rounded-2xl p-4 eye-card">
+              <p className="text-sm" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Top Prediction</p>
+              <div className="mt-1 text-2xl font-bold text-white">{streamData.predicted || "None"}</div>
               
               {/* Display user info from database if available */}
               {streamData.userInfo ? (
