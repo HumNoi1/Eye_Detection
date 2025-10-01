@@ -42,7 +42,8 @@ except Exception as e:
 
 try:
     model = YOLO('best.pt')
-    logger.info("YOLO model loaded successfully")
+    # Use full precision (FP32) for maximum accuracy - no FP16 conversion
+    logger.info("YOLO model loaded successfully with FP32 (full precision)")
 except Exception as e:
     logger.error(f"Failed to load YOLO model: {e}")
     raise
@@ -73,36 +74,44 @@ class UserResponse(BaseModel):
     created_at: str
 
 async def get_user_by_label(label: str):
-    """Query user from database by label with caching"""
+    """Query user from database by label with caching
+    Supports labels with or without student_id (e.g., 'Poom' or 'Poom 65025367')
+    """
     if not supabase:
         logger.error(f"❌ Supabase client not initialized! Cannot query user for label: {label}")
         return None
     
+    # Clean label: remove student_id if present (e.g., "Poom 65025367" -> "Poom")
+    clean_label = label.split()[0] if ' ' in label else label
+    if label != clean_label:
+        logger.info(f"🔄 Cleaning label: '{label}' -> '{clean_label}'")
+    
     # Check cache first
-    if label in user_cache:
-        cached_time, user_data = user_cache[label]
+    if clean_label in user_cache:
+        cached_time, user_data = user_cache[clean_label]
         if datetime.now() - cached_time < timedelta(seconds=CACHE_TIMEOUT):
-            logger.info(f"✓ Cache hit for label: {label} -> {user_data.get('username', 'N/A')}")
+            if user_data:
+                logger.info(f"✓ Cache hit: {clean_label} -> {user_data.get('username', 'N/A')}")
             return user_data
         else:
-            logger.debug(f"⌛ Cache expired for label: {label}")
+            logger.debug(f"⌛ Cache expired for label: {clean_label}")
     
     # Query from database
     try:
-        logger.info(f"🔍 Querying database for label: {label}")
-        response = supabase.table('users').select('*').eq('label', label).execute()
+        logger.info(f"🔍 Querying database for label: {clean_label}")
+        response = supabase.table('users').select('*').eq('label', clean_label).execute()
         if response.data and len(response.data) > 0:
             user_data = response.data[0]
-            user_cache[label] = (datetime.now(), user_data)
-            logger.info(f"✓ User found: {label} -> {user_data['username']} (ID: {user_data['student_id']})")
+            user_cache[clean_label] = (datetime.now(), user_data)
+            logger.info(f"✓ User found: {clean_label} -> {user_data['username']} (ID: {user_data['student_id']})")
             return user_data
         else:
-            logger.warning(f"⚠ No user found for label: '{label}' in database")
+            logger.warning(f"⚠ No user found for label: '{clean_label}' in database")
             # Cache negative result to avoid repeated queries
-            user_cache[label] = (datetime.now(), None)
+            user_cache[clean_label] = (datetime.now(), None)
             return None
     except Exception as e:
-        logger.error(f"❌ Database query error for label {label}: {e}")
+        logger.error(f"❌ Database query error for label {clean_label}: {e}")
         return None
 
 @app.websocket("/ws")
@@ -121,10 +130,13 @@ async def websocket_endpoint(websocket: WebSocket):
             break
         start_time = time.time()
         device = 0 if torch.cuda.is_available() else 'cpu'
+        # Use full precision (FP32) for maximum accuracy
         results = model(frame, device=device, verbose=False)
         latency = int((time.time() - start_time) * 1000)
-        annotated_frame = results[0].plot()
-        _, buffer = cv2.imencode('.jpg', annotated_frame)
+        # Plot with labels only (no confidence scores)
+        annotated_frame = results[0].plot(conf=False, labels=True)
+        # Optimize JPEG encoding for faster transmission
+        _, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         frame_b64 = base64.b64encode(buffer).decode('utf-8')
         detections = []
         for box in results[0].boxes:

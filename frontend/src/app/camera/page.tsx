@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { usePerformanceMetrics } from "@/hooks/usePerformanceMetrics";
+import { errorTracker } from "@/lib/error-tracker";
+import type { ErrorLog } from "@/lib/error-tracker";
 
 /** ===== Types ===== */
 type Status = "ready" | "connected" | "disconnected" | "error";
@@ -50,13 +53,21 @@ export default function FaceDetectionPage() {
   const [logs, setLogs] = useState<string[]>(["Waiting for camera..."]);
   const [predicted, setPredicted] = useState("");
   const [predictedPercentage, setPredictedPercentage] = useState(0);
-  const [_predictionStats, setPredictionStats] = useState<PredictionStats>({}); // kept for future use
+  const [predictionStats, setPredictionStats] = useState<PredictionStats>({});
   const [historySize, setHistorySize] = useState(0);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [errors, setErrors] = useState<ErrorLog[]>([]);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  // Performance metrics tracking
+  const { metrics, addMetric, getStats, clearMetrics } = usePerformanceMetrics();
 
   // เปลี่ยนปลายทางได้ด้วย NEXT_PUBLIC_WS_URL
   const wsUrl = useMemo(
@@ -79,50 +90,132 @@ export default function FaceDetectionPage() {
       .sort((a, b) => b.confidence - a.confidence);
   };
 
-  // throttle การวาดที่ฝั่ง UI (~33fps)
-  const lastDrawAtRef = useRef(0);
-  const MIN_DRAW_INTERVAL_MS = 30;
-
-  const drawFrame = async (b64?: string) => {
-    if (!b64) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const now = performance.now();
-    if (now - lastDrawAtRef.current < MIN_DRAW_INTERVAL_MS) return;
-    lastDrawAtRef.current = now;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const src = "data:image/jpeg;base64," + b64;
-
-    // เร็ว: createImageBitmap (fallback เป็น Image())
+  // Initialize WebWorker for image decoding
+  useEffect(() => {
     try {
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const bmp: ImageBitmap = await createImageBitmap(blob);
-      // ปรับ canvas ให้คงอัตราส่วน 16:9 (1280x720)
-      if (canvas.width !== 1280 || canvas.height !== 720) {
-        canvas.width = 1280;
-        canvas.height = 720;
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-      if (bmp.close) bmp.close();
-    } catch {
-      const img = new Image();
-      img.onload = () => {
-        if (canvas.width !== 1280 || canvas.height !== 720) {
-          canvas.width = 1280;
-          canvas.height = 720;
+      workerRef.current = new Worker('/image-decoder.worker.js');
+      
+      workerRef.current.onmessage = (e) => {
+        const { bitmap, success, error } = e.data;
+        
+        if (!success) {
+          errorTracker.captureError(`Worker error: ${error}`);
+          return;
         }
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Use requestAnimationFrame for smooth rendering
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        
+        animationFrameRef.current = requestAnimationFrame(() => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          
+          const ctx = canvas.getContext("2d", { alpha: false });
+          if (!ctx) return;
+          
+          if (canvas.width !== 1280 || canvas.height !== 720) {
+            canvas.width = 1280;
+            canvas.height = 720;
+          }
+          
+          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          bitmap.close();
+        });
       };
-      img.src = src;
+      
+      workerRef.current.onerror = (error) => {
+        errorTracker.captureError(`Worker initialization error: ${error.message}`);
+      };
+    } catch {
+      errorTracker.captureWarning('WebWorker not supported, falling back to main thread');
     }
-  };
+    
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  // Error tracking subscription
+  useEffect(() => {
+    const unsubscribe = errorTracker.subscribe((errorList) => {
+      setErrors(errorList.slice(0, 20)); // Keep last 20 errors
+    });
+    return () => { unsubscribe(); };
+  }, []);
+
+  // Draw frame using WebWorker or fallback
+  const drawFrame = useCallback((b64?: string) => {
+    if (!b64) return;
+    
+    if (workerRef.current) {
+      // Use WebWorker (recommended)
+      workerRef.current.postMessage({ 
+        id: Date.now(),
+        base64: b64 
+      });
+    } else {
+      // Fallback to main thread
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      requestAnimationFrame(async () => {
+        const ctx = canvas.getContext("2d", { alpha: false });
+        if (!ctx) return;
+        
+        try {
+          const src = `data:image/jpeg;base64,${b64}`;
+          const res = await fetch(src);
+          const blob = await res.blob();
+          const bitmap = await createImageBitmap(blob);
+          
+          if (canvas.width !== 1280 || canvas.height !== 720) {
+            canvas.width = 1280;
+            canvas.height = 720;
+          }
+          
+          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          bitmap.close();
+        } catch (error) {
+          errorTracker.captureError(error as Error, { context: 'drawFrame' });
+        }
+      });
+    }
+  }, []);
+
+  // Screenshot function
+  const takeSnapshot = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      errorTracker.captureWarning('Canvas not available for snapshot');
+      return;
+    }
+    
+    try {
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        errorTracker.captureInfo('Snapshot saved successfully');
+      }, 'image/jpeg', 0.95);
+    } catch (error) {
+      errorTracker.captureError(error as Error, { context: 'takeSnapshot' });
+    }
+  }, []);
 
   /** ===== WS Connect / Disconnect ===== */
   const connect = () => {
@@ -139,24 +232,35 @@ export default function FaceDetectionPage() {
     ws.onopen = () => {
       setStatus("connected");
       setLogs((p) => [...p.slice(-9), "WebSocket connected"]);
+      errorTracker.captureInfo('WebSocket connected successfully');
     };
 
     ws.onmessage = (event) => {
       let data: WSData;
       try {
         data = JSON.parse(event.data);
-      } catch {
-        setLogs((p) => [...p.slice(-9), "Invalid JSON from server"]);
+      } catch (parseError) {
+        const msg = "Invalid JSON from server";
+        setLogs((p) => [...p.slice(-9), msg]);
+        errorTracker.captureError(parseError as Error, { context: 'ws.onmessage' });
         return;
       }
 
       if ("error" in data && data.error) {
         setLogs((p) => [...p.slice(-9), `Server error: ${data.error}`]);
+        errorTracker.captureError(data.error);
         return;
       }
 
-      if ("fps" in data && typeof data.fps === "number") setFps(data.fps);
-      if ("latency" in data && typeof data.latency === "number") setLatency(data.latency);
+      // Track performance metrics
+      if ("fps" in data && typeof data.fps === "number") {
+        setFps(data.fps);
+        addMetric('fps', data.fps);
+      }
+      if ("latency" in data && typeof data.latency === "number") {
+        setLatency(data.latency);
+        addMetric('latency', data.latency);
+      }
       if ("log" in data && data.log) setLogs((p) => [...p.slice(-9), data.log ?? ""]);
       
       if ("predicted" in data && typeof data.predicted === "string") setPredicted(data.predicted);
@@ -187,12 +291,17 @@ export default function FaceDetectionPage() {
       wsRef.current = null;
     };
 
-    ws.onclose = () => cleanup("normal");
-    ws.onerror = () => {
+    ws.onclose = () => {
+      cleanup("normal");
+      errorTracker.captureWarning('WebSocket closed');
+    };
+    
+    ws.onerror = (error) => {
       try {
         ws.close();
       } catch {}
       cleanup("error");
+      errorTracker.captureError(`WebSocket error: ${error}`);
     };
   };
 
@@ -262,12 +371,21 @@ export default function FaceDetectionPage() {
               <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
                 <div className="flex gap-2 flex-wrap">
                   {status === "connected" ? (
-                    <button
-                      onClick={disconnect}
-                      className="rounded-xl border border-foreground px-5 py-2 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
-                    >
-                      หยุดสตรีม
-                    </button>
+                    <>
+                      <button
+                        onClick={disconnect}
+                        className="rounded-xl border border-foreground px-5 py-2 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
+                      >
+                        หยุดสตรีม
+                      </button>
+                      <button
+                        onClick={takeSnapshot}
+                        className="rounded-xl border border-blue-500 px-5 py-2 text-blue-500 transition hover:bg-blue-500 hover:text-white active:opacity-80"
+                        title="Take snapshot"
+                      >
+                        📸 Snapshot
+                      </button>
+                    </>
                   ) : (
                     <button
                       onClick={connect}
@@ -276,6 +394,26 @@ export default function FaceDetectionPage() {
                       เริ่มสตรีม
                     </button>
                   )}
+                  <button
+                    onClick={() => setShowMetrics(!showMetrics)}
+                    className={`rounded-xl border px-5 py-2 transition active:opacity-80 ${
+                      showMetrics 
+                        ? "border-green-500 bg-green-500 text-white" 
+                        : "border-foreground text-foreground hover:bg-foreground hover:text-background"
+                    }`}
+                  >
+                    📊 Metrics
+                  </button>
+                  <button
+                    onClick={() => setShowErrors(!showErrors)}
+                    className={`rounded-xl border px-5 py-2 transition active:opacity-80 ${
+                      showErrors 
+                        ? "border-red-500 bg-red-500 text-white" 
+                        : "border-foreground text-foreground hover:bg-foreground hover:text-background"
+                    }`}
+                  >
+                    🐛 Errors {errors.length > 0 && `(${errors.length})`}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-center text-sm">
@@ -289,6 +427,114 @@ export default function FaceDetectionPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Performance Metrics Dashboard */}
+              {showMetrics && (
+                <div className="mt-4 rounded-lg border border-green-500/30 bg-green-50/50 p-4 dark:bg-green-950/20">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="font-semibold text-green-700 dark:text-green-400">📊 Performance Metrics</h4>
+                    <button
+                      onClick={clearMetrics}
+                      className="text-xs text-green-600 hover:underline dark:text-green-400"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['fps', 'latency'] as const).map((type) => {
+                      const stats = getStats(type);
+                      return (
+                        <div key={type} className="rounded-lg bg-white/50 p-3 dark:bg-black/20">
+                          <p className="text-xs font-semibold uppercase opacity-70">{type}</p>
+                          <div className="mt-2 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span>Current:</span>
+                              <span className="font-semibold">{stats.current.toFixed(1)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Avg:</span>
+                              <span>{stats.avg.toFixed(1)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Min/Max:</span>
+                              <span>{stats.min.toFixed(1)} / {stats.max.toFixed(1)}</span>
+                            </div>
+                          </div>
+                          {/* Mini chart */}
+                          <div className="mt-2 flex h-8 items-end gap-0.5">
+                            {metrics[type].slice(-20).map((point, i) => {
+                              const height = type === 'fps' 
+                                ? (point.value / 60) * 100 
+                                : Math.min((point.value / 200) * 100, 100);
+                              return (
+                                <div
+                                  key={i}
+                                  className="flex-1 bg-green-500 opacity-70"
+                                  style={{ height: `${height}%` }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Log Panel */}
+              {showErrors && (
+                <div className="mt-4 rounded-lg border border-red-500/30 bg-red-50/50 p-4 dark:bg-red-950/20">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="font-semibold text-red-700 dark:text-red-400">🐛 Error Log</h4>
+                    <button
+                      onClick={() => {
+                        errorTracker.clearErrors();
+                        setErrors([]);
+                      }}
+                      className="text-xs text-red-600 hover:underline dark:text-red-400"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-2">
+                    {errors.length === 0 ? (
+                      <p className="text-sm text-center opacity-70 py-4">No errors logged ✅</p>
+                    ) : (
+                      errors.map((error) => (
+                        <div
+                          key={error.id}
+                          className={`rounded-lg p-2 text-xs ${
+                            error.level === 'error' 
+                              ? 'bg-red-100 dark:bg-red-900/30' 
+                              : error.level === 'warning'
+                              ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                              : 'bg-blue-100 dark:bg-blue-900/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-mono text-[10px] opacity-60">
+                              {new Date(error.timestamp).toLocaleTimeString()}
+                            </span>
+                            <span className={`text-[10px] font-semibold uppercase ${
+                              error.level === 'error' ? 'text-red-600' :
+                              error.level === 'warning' ? 'text-yellow-600' : 'text-blue-600'
+                            }`}>
+                              {error.level}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm">{error.message}</p>
+                          {error.context && (
+                            <p className="mt-1 font-mono text-[10px] opacity-60">
+                              {JSON.stringify(error.context)}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* System Logs */}
               <div className="mt-4">
