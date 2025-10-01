@@ -1,0 +1,20 @@
+flowchart TD
+    L1([Frame Loop Start]) --> L2[Read frame]
+    L2 --> L3{Read OK?}
+    L3 -->|No| L99([Break Loop])
+    L3 -->|Yes| L4[YOLO Inference]
+    L4 --> L5[Create annotated frame]
+    L5 --> L6[Extract detections]
+    L6 --> L7[Prune old history (>10s)]
+    L7 --> L8[Append current classes]
+    L8 --> L9{History empty?}
+    L9 -->|Yes| L10[predicted = empty]
+    L9 -->|No| L11[predicted = most common]
+    L10 --> L12[Compute latency / fps / log]
+    L11 --> L12
+    L12 --> L13[Encode frame -> Base64]
+    L13 --> L14[Build JSON payload]
+    L14 --> L15{Send OK?}
+    L15 -->|No| L99
+    L15 -->|Yes| L16[sleep 30ms]
+    L16 --> L2

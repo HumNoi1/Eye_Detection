@@ -178,4 +178,55 @@ sequenceDiagram
 - แยก worker inference เพื่อไม่บล็อก event loop
 
 ---
-ปรับปรุง / เพิ่ม Diagram เพิ่มเติม แจ้งได้ตลอดครับ
+## 6. Mermaid Source Files
+ไฟล์แยกสำหรับแก้ไขง่าย:
+- `docs/diagrams/system_flow.mmd`
+- `docs/diagrams/frame_loop.mmd`
+- `docs/diagrams/sequence.mmd`
+
+## 7. การ Export เป็น PNG
+ติดตั้ง Mermaid CLI (ขอแนะนำให้ global หรือ dev dependency ที่ root แยกจาก frontend ถ้าไม่อยากปนกับ Next.js) วิธีง่าย:
+
+### ตัวเลือก A: ใช้ npx (ครั้งคราว)
+```powershell
+npx -y @mermaid-js/mermaid-cli -i docs/diagrams/system_flow.mmd -o docs/diagrams/system_flow.png
+npx -y @mermaid-js/mermaid-cli -i docs/diagrams/frame_loop.mmd -o docs/diagrams/frame_loop.png
+npx -y @mermaid-js/mermaid-cli -i docs/diagrams/sequence.mmd -o docs/diagrams/sequence.png
+```
+
+### ตัวเลือก B: ติดตั้งเป็น dev dependency (แนะนำ)
+สร้าง/เพิ่ม `package.json` ระดับ root หรือใช้ของ frontend ก็ได้ แต่ควรแยกเพื่อไม่ให้ next build ดึงไปโดยไม่จำเป็น
+
+ตัวอย่าง (ใช้ของ frontend เดิม):
+```powershell
+cd frontend
+npm install -D @mermaid-js/mermaid-cli
+```
+เพิ่ม script ใน `frontend/package.json`:
+```jsonc
+"scripts": {
+  // ...existing scripts
+  "diagram:system": "mmdc -i ../docs/diagrams/system_flow.mmd -o ../docs/diagrams/system_flow.png",
+  "diagram:loop": "mmdc -i ../docs/diagrams/frame_loop.mmd -o ../docs/diagrams/frame_loop.png",
+  "diagram:seq": "mmdc -i ../docs/diagrams/sequence.mmd -o ../docs/diagrams/sequence.png",
+  "diagram:all": "npm-run-all diagram:*"
+}
+```
+(หากไม่มี npm-run-all ให้ติดตั้งเพิ่ม: `npm i -D npm-run-all` หรือใช้ PowerShell wildcard: `npm run diagram:system; npm run diagram:loop; npm run diagram:seq`)
+
+### ตัวเลือก C: ใช้ Docker (ถ้าต้องการ reproducible)
+```powershell
+docker run --rm -v ${PWD}:/work minlag/mermaid-cli mmdc -i /work/docs/diagrams/system_flow.mmd -o /work/docs/diagrams/system_flow.png
+```
+
+## 8. หมายเหตุคุณภาพภาพ
+- สามารถเพิ่มความละเอียดด้วย flag `-w 1800` (หรือ `-b transparent` สำหรับพื้นหลังโปร่งใส)
+- ใส่ธีม: `-t forest` หรือสร้าง theme config แยก
+
+ตัวอย่าง:
+```powershell
+npx -y @mermaid-js/mermaid-cli -i docs/diagrams/system_flow.mmd -o docs/diagrams/system_flow.png -w 1600 -t forest
+```
+
+---
+หากต้องการให้ผมเพิ่ม script ลงใน `frontend/package.json` ตอนนี้ แจ้งได้เลยครับ หรือถ้าต้องการสร้าง root package.json แยกสำหรับ docs ก็ทำได้เช่นกัน
