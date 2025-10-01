@@ -5,7 +5,22 @@
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00a393.svg)
+![Next.js](https://img.shields.io/badge/Next.js-15.5-black.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
+
+## 📸 Screenshots
+
+<div align="center">
+  <img src="docs/demo.gif" alt="Demo" width="80%">
+  <p><em>ระบบตรวจจับใบหน้าแบบ Real-time พร้อมแสดงข้อมูลผู้ใช้</em></p>
+</div>
+
+### Main Features
+- 🎯 Real-time face detection with YOLOv8
+- 👤 Face recognition with database integration
+- 📊 Live statistics dashboard
+- 🌓 Dark/Light mode support
 
 ## 📋 สารบัญ
 
@@ -97,16 +112,9 @@ cd backend
 pip install -r requirements.txt
 ```
 
-**requirements.txt:**
-```txt
-fastapi==0.104.1
-uvicorn==0.24.0
-ultralytics==8.0.196
-opencv-python==4.8.1.78
-torch==2.1.0
-python-dotenv==1.0.0
-supabase==2.0.3
-python-multipart==0.0.6
+หรือติดตั้งทีละตัว:
+```bash
+pip install fastapi uvicorn ultralytics opencv-python torch python-dotenv supabase python-multipart pydantic
 ```
 
 ### 3. ติดตั้ง Frontend Dependencies
@@ -213,6 +221,22 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
 
 ## 🎮 การใช้งาน
 
+### Quick Start
+
+เปิด 2 terminal windows:
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
 ### 1. เริ่ม Backend Server
 
 ```bash
@@ -220,7 +244,15 @@ cd backend
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-เปิดเบราว์เซอร์ไปที่ http://localhost:8000/docs เพื่อดู API Documentation
+✅ ควรเห็นข้อความ:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+INFO:     Supabase client initialized successfully
+INFO:     YOLO model loaded successfully
+```
+
+🔗 เปิดเบราว์เซอร์ไปที่ http://localhost:8000/docs เพื่อดู API Documentation
 
 ### 2. เริ่ม Frontend Development Server
 
@@ -229,14 +261,29 @@ cd frontend
 npm run dev
 ```
 
-เปิดเบราว์เซอร์ไปที่ http://localhost:3000
+✅ ควรเห็นข้อความ:
+```
+   ▲ Next.js 15.5.4
+   - Local:        http://localhost:3000
+   - Ready in 1.2s
+```
+
+🔗 เปิดเบราว์เซอร์ไปที่ http://localhost:3000
 
 ### 3. ใช้งานระบบ
 
-1. ไปที่ http://localhost:3000/camera
-2. คลิก **"เริ่มสตรีม"**
-3. อนุญาตให้เข้าถึงกล้อง
+1. ไปที่ **http://localhost:3000/camera**
+2. คลิกปุ่ม **"เริ่มสตรีม"** 🎥
+3. อนุญาตให้เข้าถึงกล้อง (Allow camera access)
 4. ระบบจะเริ่มตรวจจับและแสดงผลแบบ real-time
+
+### 4. คุณสมบัติที่ใช้ได้
+
+- 👤 **Live Detection**: ดูตัวตนของคนที่ถูกตรวจจับพร้อมเปอร์เซ็นต์ความมั่นใจ
+- 📊 **Statistics**: ดู FPS, Latency และจำนวน detections
+- 🌓 **Theme Toggle**: สลับระหว่าง Dark/Light mode
+- 📝 **System Logs**: ดู real-time logs ของระบบ
+- 👥 **Multi-person**: ตรวจจับหลายคนพร้อมกัน พร้อมข้อมูลแต่ละคน
 
 ## 📁 โครงสร้างโปรเจค
 
