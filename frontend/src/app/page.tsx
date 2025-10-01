@@ -22,50 +22,21 @@ export default function Home() {
           <h1 className="text-3xl/tight font-semibold">
             EyeRecog
           </h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm opacity-80">
-            ระบบเข้าสู่ระบบและสมัครสมาชิกที่เรียบง่าย ปลอดภัย และใช้งานได้ทันที
-          </p>
+          
 
           {/* CTA buttons */}
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="/login"
+              href="/camera"
               className="inline-flex items-center justify-center rounded-xl bg-foreground px-6 py-3 text-background transition hover:opacity-90 active:opacity-80"
             >
               เริ่มใช้งาน (Start)
             </Link>
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center rounded-xl border border-foreground px-6 py-3 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
-            >
-              สมัครสมาชิก (Register)
-            </Link>
+            
           </div>
 
-          {/* Feature bullets */}
-          <ul className="mx-auto mt-6 grid max-w-md gap-2 text-left text-sm opacity-85">
-            <li className="flex items-start gap-2">
-              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-foreground/70" />
-              UI เน้นความเรียบง่าย อ่านง่าย รองรับโหมดมืด
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-foreground/70" />
-              ฟอร์ม Login / Register แยกเป็นหน้า พร้อมลิงก์เชื่อมครบ
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-foreground/70" />
-              ดีไซน์ glass + gradient ดูทันสมัย เบาตา
-            </li>
-          </ul>
+          
 
-          {/* Footer links */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-xs opacity-70">
-            <a className="underline underline-offset-4" href="/login">เข้าสู่ระบบ</a>
-            <span>•</span>
-            <a className="underline underline-offset-4" href="/register">สมัครสมาชิก</a>
-            <span>•</span>
-            <Link className="underline underline-offset-4" href="/">กลับหน้าแรก</Link>
-          </div>
         </div>
       </main>
     </div>
