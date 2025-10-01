@@ -50,8 +50,10 @@ except Exception as e:
 cap = None
 
 history = deque()
+HISTORY_WINDOW = 5  # seconds - เก็บ log 5 วินาทีล่าสุด
 
 predicted = ""
+predicted_percentage = 0.0
 
 # User cache with timestamp
 user_cache = {}
@@ -73,31 +75,34 @@ class UserResponse(BaseModel):
 async def get_user_by_label(label: str):
     """Query user from database by label with caching"""
     if not supabase:
-        logger.warning("Supabase client not initialized")
+        logger.error(f"❌ Supabase client not initialized! Cannot query user for label: {label}")
         return None
     
     # Check cache first
     if label in user_cache:
         cached_time, user_data = user_cache[label]
         if datetime.now() - cached_time < timedelta(seconds=CACHE_TIMEOUT):
-            logger.debug(f"Cache hit for label: {label}")
+            logger.info(f"✓ Cache hit for label: {label} -> {user_data.get('username', 'N/A')}")
             return user_data
         else:
-            logger.debug(f"Cache expired for label: {label}")
+            logger.debug(f"⌛ Cache expired for label: {label}")
     
     # Query from database
     try:
+        logger.info(f"🔍 Querying database for label: {label}")
         response = supabase.table('users').select('*').eq('label', label).execute()
         if response.data and len(response.data) > 0:
             user_data = response.data[0]
             user_cache[label] = (datetime.now(), user_data)
-            logger.info(f"User found in database: {label}")
+            logger.info(f"✓ User found: {label} -> {user_data['username']} (ID: {user_data['student_id']})")
             return user_data
         else:
-            logger.warning(f"No user found for label: {label}")
+            logger.warning(f"⚠ No user found for label: '{label}' in database")
+            # Cache negative result to avoid repeated queries
+            user_cache[label] = (datetime.now(), None)
             return None
     except Exception as e:
-        logger.error(f"Database query error for label {label}: {e}")
+        logger.error(f"❌ Database query error for label {label}: {e}")
         return None
 
 @app.websocket("/ws")
@@ -132,27 +137,62 @@ async def websocket_endpoint(websocket: WebSocket):
                 'cls': box.cls[0].item()
             })
         current_time = time.time()
-        # clean old detections
-        while history and history[0][0] < current_time - 10:
+        # clean old detections (เก็บแค่ 5 วินาทีล่าสุด)
+        while history and history[0][0] < current_time - HISTORY_WINDOW:
             history.popleft()
         # add current detections
         for d in detections:
             history.append((current_time, int(d['cls'])))
-        # predict most common
+        
+        # predict most common with percentage
         user_info = None
+        prediction_stats = {}  # เก็บสถิติแต่ละคนพร้อม user info
+        
         try:
             if history:
+                # นับจำนวนแต่ละ class
                 cls_counts = Counter(cls for _, cls in history)
-                most_common = cls_counts.most_common(1)[0][0]
-                predicted = model.names[most_common]
+                total_detections = len(history)
                 
-                # Query user from database
-                user_info = await get_user_by_label(predicted)
+                # คำนวณเปอร์เซ็นต์แต่ละคนและ query user info
+                logger.debug(f"📊 Processing {len(cls_counts)} detected people")
+                for cls, count in cls_counts.items():
+                    label = model.names[cls]
+                    percentage = (count / total_detections) * 100
+                    
+                    # Query user info for this label
+                    logger.debug(f"Querying user info for: {label}")
+                    label_user_info = await get_user_by_label(label)
+                    
+                    prediction_stats[label] = {
+                        'count': count,
+                        'percentage': round(percentage, 2),
+                        'user': label_user_info  # เพิ่ม user info ของแต่ละคน
+                    }
+                    
+                    if label_user_info:
+                        logger.info(f"✓ Added user info for {label}: {label_user_info['username']}")
+                    else:
+                        logger.warning(f"⚠ No user info for label: {label}")
+                
+                # หาคนที่มีเปอร์เซ็นต์สูงสุด
+                most_common_cls, most_common_count = cls_counts.most_common(1)[0]
+                predicted = model.names[most_common_cls]
+                predicted_percentage = (most_common_count / total_detections) * 100
+                
+                # Get user info for top prediction from stats
+                user_info = prediction_stats[predicted].get('user')
+                
+                logger.debug(f"Prediction: {predicted} ({predicted_percentage:.2f}%) | Stats: {prediction_stats}")
             else:
                 predicted = ""
+                predicted_percentage = 0.0
+                prediction_stats = {}
         except Exception as e:
             logger.error(f"Error in prediction/user lookup: {e}")
             predicted = ""
+            predicted_percentage = 0.0
+            prediction_stats = {}
             user_info = None
 
         current_time = time.time()
@@ -167,6 +207,9 @@ async def websocket_endpoint(websocket: WebSocket):
             'latency': latency,
             'log': log,
             'predicted': predicted,
+            'predicted_percentage': round(predicted_percentage, 2),
+            'prediction_stats': prediction_stats,
+            'history_size': len(history),
             'user': user_info  # Add user information from database
         }
         try:

@@ -5,27 +5,42 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /** ===== Types ===== */
 type Status = "ready" | "connected" | "disconnected" | "error";
 
-type WSData =
-  | {
-      fps?: number;
-      latency?: number;
-      frame?: string; // base64 jpeg
-      predicted?: string; // top identity (string)
-      predictions?: Array<{ name: string; confidence: number }>;
-      log?: string;
-      error?: string;
-    }
-  | {
-      fps?: number;
-      latency?: number;
-      frame?: string;
-      predicted?: string;
-      predictions?: Record<string, number>;
-      log?: string;
-      error?: string;
-    };
+type UserInfo = {
+  user_id: string;
+  username: string;
+  student_id: string;
+  label: string;
+  created_at: string;
+  updated_at?: string;
+};
 
-type Candidate = { name: string; confidence: number };
+type PredictionStats = {
+  [label: string]: {
+    count: number;
+    percentage: number;
+    user?: UserInfo | null;  // user info for each detected person
+  };
+};
+
+type WSData = {
+  fps?: number;
+  latency?: number;
+  frame?: string; // base64 jpeg
+  predicted?: string; // top identity (string)
+  predicted_percentage?: number; // confidence percentage of top prediction
+  prediction_stats?: PredictionStats; // all detected people with percentages
+  history_size?: number; // number of detections in 5s window
+  log?: string;
+  error?: string;
+  user?: UserInfo | null; // user info from database
+};
+
+type Candidate = { 
+  name: string; 
+  confidence: number; 
+  count?: number;
+  user?: UserInfo | null;  // user info from database
+};
 
 /** ===== Page ===== */
 export default function FaceDetectionPage() {
@@ -34,6 +49,10 @@ export default function FaceDetectionPage() {
   const [latency, setLatency] = useState(0);
   const [logs, setLogs] = useState<string[]>(["Waiting for camera..."]);
   const [predicted, setPredicted] = useState("");
+  const [predictedPercentage, setPredictedPercentage] = useState(0);
+  const [_predictionStats, setPredictionStats] = useState<PredictionStats>({}); // kept for future use
+  const [historySize, setHistorySize] = useState(0);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,17 +66,16 @@ export default function FaceDetectionPage() {
 
   /** ===== Helpers ===== */
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
-  const pct = (n: number) => `${(clamp01(n) * 100).toFixed(1)}%`;
 
-  const normalizeCandidates = (preds?: WSData["predictions"]): Candidate[] => {
-    if (!preds) return [];
-    if (Array.isArray(preds)) {
-      return preds
-        .map((p) => ({ name: p.name ?? "Unknown", confidence: clamp01(p.confidence ?? 0) }))
-        .sort((a, b) => b.confidence - a.confidence);
-    }
-    return Object.entries(preds)
-      .map(([name, c]) => ({ name: name || "Unknown", confidence: clamp01(Number(c) || 0) }))
+  const normalizeCandidates = (stats?: PredictionStats): Candidate[] => {
+    if (!stats) return [];
+    return Object.entries(stats)
+      .map(([name, data]) => ({
+        name: name || "Unknown",
+        confidence: clamp01(data.percentage / 100),
+        count: data.count,
+        user: data.user  // include user info from backend
+      }))
       .sort((a, b) => b.confidence - a.confidence);
   };
 
@@ -83,7 +101,6 @@ export default function FaceDetectionPage() {
     try {
       const res = await fetch(src);
       const blob = await res.blob();
-      // @ts-ignore
       const bmp: ImageBitmap = await createImageBitmap(blob);
       // ปรับ canvas ให้คงอัตราส่วน 16:9 (1280x720)
       if (canvas.width !== 1280 || canvas.height !== 720) {
@@ -92,7 +109,6 @@ export default function FaceDetectionPage() {
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-      // @ts-ignore
       if (bmp.close) bmp.close();
     } catch {
       const img = new Image();
@@ -142,8 +158,18 @@ export default function FaceDetectionPage() {
       if ("fps" in data && typeof data.fps === "number") setFps(data.fps);
       if ("latency" in data && typeof data.latency === "number") setLatency(data.latency);
       if ("log" in data && data.log) setLogs((p) => [...p.slice(-9), data.log ?? ""]);
+      
       if ("predicted" in data && typeof data.predicted === "string") setPredicted(data.predicted);
-      if ("predictions" in data) setCandidates(normalizeCandidates(data.predictions));
+      if ("predicted_percentage" in data && typeof data.predicted_percentage === "number") 
+        setPredictedPercentage(data.predicted_percentage);
+      if ("prediction_stats" in data) {
+        setPredictionStats(data.prediction_stats || {});
+        setCandidates(normalizeCandidates(data.prediction_stats));
+      }
+      if ("history_size" in data && typeof data.history_size === "number") 
+        setHistorySize(data.history_size);
+      if ("user" in data) setUserInfo(data.user || null);
+      
       if ("frame" in data && data.frame) void drawFrame(data.frame);
     };
 
@@ -191,8 +217,6 @@ export default function FaceDetectionPage() {
   }, []);
 
   /** ===== Render ===== */
-  const top = candidates[0];
-
   return (
     <div className="relative min-h-dvh overflow-hidden bg-background text-foreground">
       {/* Background: gradient + blobs */}
@@ -236,11 +260,11 @@ export default function FaceDetectionPage() {
 
               {/* Controls + Stats */}
               <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {status === "connected" ? (
                     <button
                       onClick={disconnect}
-                      className="rounded-xl bg-foreground px-5 py-2 text-background transition hover:opacity-90 active:opacity-80"
+                      className="rounded-xl border border-foreground px-5 py-2 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
                     >
                       หยุดสตรีม
                     </button>
@@ -266,9 +290,9 @@ export default function FaceDetectionPage() {
                 </div>
               </div>
 
-              {/* Logs */}
+              {/* System Logs */}
               <div className="mt-4">
-                <p className="mb-1 text-sm opacity-70">Logs</p>
+                <p className="mb-1 text-sm opacity-70">System Logs</p>
                 <div className="max-h-40 overflow-y-auto rounded-lg bg-black/5 p-2 text-xs dark:bg-white/5">
                   {logs.map((log, i) => (
                     <div key={i}>{log}</div>
@@ -286,26 +310,92 @@ export default function FaceDetectionPage() {
 
             {/* Top match */}
             <div className="mt-4 rounded-2xl border border-black/10 p-4 dark:border-white/15">
-              <p className="text-sm opacity-70">Top match</p>
-              <div className="mt-1 text-2xl font-bold">{top ? top.name : "None"}</div>
-              <div className="mt-2">
-                <Progress value={(top?.confidence ?? 0) * 100} />
-                <div className="mt-1 text-xs opacity-70">Confidence: {pct(top?.confidence ?? 0)}</div>
+              <p className="text-sm opacity-70">Top Prediction</p>
+              <div className="mt-1 text-2xl font-bold">{predicted || "None"}</div>
+              
+              {/* Display user info from database if available */}
+              {userInfo ? (
+                <div className="mt-3 rounded-lg bg-green-50 p-3 dark:bg-green-950/30">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="opacity-70">👤</span>
+                      <span className="font-semibold text-green-700 dark:text-green-400">
+                        {userInfo.username}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="opacity-70">🎓</span>
+                      <span className="font-mono text-xs">
+                        Student ID: {userInfo.student_id}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="opacity-70">🏷️</span>
+                      <span className="font-mono text-xs">
+                        Label: {userInfo.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : predicted && (
+                <div className="mt-3 rounded-lg bg-yellow-50 p-3 dark:bg-yellow-950/30">
+                  <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                    ⚠️ No user data found for label &quot;{predicted}&quot;
+                  </p>
+                </div>
+              )}
+              
+              <div className="mt-3">
+                <Progress value={predictedPercentage} />
+                <div className="mt-1 text-xs opacity-70">
+                  Confidence: {predictedPercentage.toFixed(1)}% ({historySize} detections)
+                </div>
               </div>
-              <div className="mt-1 text-xs opacity-70">Predicted: {predicted || "-"}</div>
             </div>
 
-            {/* All candidates */}
+            {/* User Info from Database */}
+            {userInfo && (
+              <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/30">
+                <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                  👤 User Information
+                </p>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="opacity-70">Name:</span>
+                    <span className="font-semibold">{userInfo.username}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-70">Student ID:</span>
+                    <span className="font-semibold">{userInfo.student_id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-70">Label:</span>
+                    <span className="font-mono text-xs">{userInfo.label}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* All detected people */}
             <div className="mt-5">
-              <p className="mb-2 text-sm opacity-70">All candidates</p>
+              <p className="mb-2 text-sm opacity-70">
+                All Detected People (Last 5s)
+              </p>
               <div className="grid gap-3">
                 {candidates.length === 0 && (
                   <div className="rounded-lg border border-dashed border-black/15 p-4 text-sm opacity-70 dark:border-white/20">
-                    ยังไม่มีข้อมูลผู้สมัครที่ตรวจจับได้
+                    ยังไม่มีการตรวจจับ
                   </div>
                 )}
                 {candidates.map((c) => (
-                  <PersonCard key={c.name} name={c.name} confidence={c.confidence} />
+                  <PersonCard 
+                    key={c.name} 
+                    name={c.name} 
+                    confidence={c.confidence}
+                    count={c.count}
+                    isTop={c.name === predicted}
+                    user={c.user}
+                  />
                 ))}
               </div>
             </div>
@@ -328,17 +418,58 @@ function StatusPill({ status }: { status: Status }) {
   );
 }
 
-function PersonCard({ name, confidence }: { name: string; confidence: number }) {
+function PersonCard({ 
+  name, 
+  confidence, 
+  count, 
+  isTop,
+  user 
+}: { 
+  name: string; 
+  confidence: number; 
+  count?: number;
+  isTop?: boolean;
+  user?: UserInfo | null;
+}) {
+  const borderColor = isTop 
+    ? "border-green-500 bg-green-50 dark:bg-green-950/20" 
+    : "border-black/10 dark:border-white/15";
+  
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-black/10 p-3 dark:border-white/15">
+    <div className={`flex items-center gap-3 rounded-xl border p-3 ${borderColor}`}>
       <div className="grid size-10 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-sky-500 text-white">
         <span className="text-sm font-semibold">{name?.trim()?.charAt(0)?.toUpperCase() || "?"}</span>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <div className="truncate font-medium">{name || "Unknown"}</div>
-          <div className="shrink-0 text-xs opacity-70">{(confidence * 100).toFixed(1)}%</div>
+          <div className="flex items-center gap-2">
+            <div className="truncate font-medium">{name || "Unknown"}</div>
+            {isTop && <span className="text-xs">👑</span>}
+          </div>
+          <div className="shrink-0 text-xs opacity-70">
+            {(confidence * 100).toFixed(1)}%
+          </div>
         </div>
+        
+        {/* Display user info from database */}
+        {user && (
+          <div className="mt-1 space-y-0.5 text-xs">
+            <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+              <span>👤</span>
+              <span className="font-medium">{user.username}</span>
+            </div>
+            <div className="flex items-center gap-1 opacity-70">
+              <span>🎓</span>
+              <span className="font-mono">{user.student_id}</span>
+            </div>
+          </div>
+        )}
+        
+        {count !== undefined && (
+          <div className="text-xs opacity-60 mt-1">
+            {count} detections
+          </div>
+        )}
         <div className="mt-1">
           <Progress value={confidence * 100} />
         </div>

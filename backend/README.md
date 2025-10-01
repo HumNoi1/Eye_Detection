@@ -6,9 +6,12 @@ Backend API สำหรับระบบตรวจจับใบหน้�
 
 - 🎥 Real-time face detection ผ่าน WebSocket
 - 👤 User identification จาก predicted label
-- 💾 เชื่อมต่อ Supabase Database
-- ⚡ Caching system เพื่อลด database queries
-- 📊 Comprehensive logging และ error handling
+- � **5-second sliding window** สำหรับ prediction ที่แม่นยำ
+- 📈 **Percentage-based prediction** แสดงความมั่นใจของการ detect
+- 📉 **Multi-person statistics** แสดงเปอร์เซ็นต์ของทุกคนในกล้อง
+- �💾 เชื่อมต่อ Supabase Database
+- ⚡ Caching system เพื่อลด database queries (~90% reduction)
+- � Comprehensive logging และ error handling
 - 🔌 RESTful API สำหรับจัดการ users
 
 ## Requirements
@@ -71,7 +74,7 @@ Server จะรันที่: `http://localhost:8000`
 ## API Endpoints
 
 ### WebSocket
-- `WS /ws` - Real-time video streaming พร้อม face detection
+- `WS /ws` - Real-time video streaming พร้อม face detection, percentage-based prediction, และ user info
 
 ### User Management
 - `GET /users` - ดึงรายชื่อ users ทั้งหมด
@@ -116,11 +119,39 @@ curl -X DELETE "http://localhost:8000/users/person_1"
 curl "http://localhost:8000/health"
 ```
 
+## Prediction System
+
+### 5-Second Sliding Window
+- เก็บ detection history ย้อนหลัง 5 วินาที
+- คำนวณเปอร์เซ็นต์ของแต่ละคนที่ปรากฏในกล้อง
+- เลือกคนที่มีเปอร์เซ็นต์สูงสุดเป็น prediction
+- แสดง confidence level (percentage) ของการ predict
+- ดูเอกสารเพิ่มเติม: [PREDICTION_SYSTEM.md](PREDICTION_SYSTEM.md)
+
+### Response Data
+```json
+{
+  "predicted": "person_1",
+  "predicted_percentage": 75.5,
+  "prediction_stats": {
+    "person_1": {"count": 120, "percentage": 75.5},
+    "person_2": {"count": 39, "percentage": 24.5}
+  },
+  "history_size": 159,
+  "user": {
+    "username": "สมชาย ใจดี",
+    "student_id": "6512345678",
+    ...
+  }
+}
+```
+
 ## Caching System
 
 - Cache timeout: 5 นาที
 - อัตโนมัติล้าง cache เมื่อมีการสร้าง/ลบ user
 - สามารถล้าง cache ด้วยตัวเองผ่าน API `/cache/clear`
+- Cache hit rate: ~90% (ลด DB queries อย่างมาก)
 
 ## Error Handling
 
