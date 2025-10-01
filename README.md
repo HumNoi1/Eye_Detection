@@ -451,9 +451,56 @@ GET /health
   "status": "healthy",
   "database": "connected",
   "cache_size": 5,
-  "model_loaded": true
+  "model_loaded": true,
+  "confidence_threshold": 0.25
 }
 ```
+
+#### Get Confidence Threshold
+```http
+GET /config/confidence
+```
+
+**Response:**
+```json
+{
+  "confidence_threshold": 0.25,
+  "description": "Confidence threshold for YOLO detection (0.0 - 1.0)"
+}
+```
+
+#### Set Confidence Threshold
+```http
+POST /config/confidence?confidence=0.5
+```
+
+**Example:**
+```bash
+# ปรับ confidence threshold เป็น 0.5 (50%)
+curl -X POST "http://localhost:8000/config/confidence?confidence=0.5"
+
+# ปรับเป็น 0.3 (30%) เพื่อตรวจจับได้ง่ายขึ้น
+curl -X POST "http://localhost:8000/config/confidence?confidence=0.3"
+
+# ปรับเป็น 0.7 (70%) เพื่อความแม่นยำสูงขึ้น
+curl -X POST "http://localhost:8000/config/confidence?confidence=0.7"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "old_value": 0.25,
+  "new_value": 0.5,
+  "message": "Confidence threshold updated to 0.5"
+}
+```
+
+**หมายเหตุ:**
+- ค่า confidence ต้องอยู่ระหว่าง 0.0 - 1.0
+- ค่าต่ำ (0.1-0.3) = ตรวจจับได้ง่าย แต่อาจมี false positives
+- ค่าสูง (0.6-0.9) = แม่นยำมาก แต่อาจพลาดบางกรณี
+- ค่าเริ่มต้น = 0.25 (สมดุลระหว่างความแม่นยำและการตรวจจับ)
 
 ## 🔧 การแก้ปัญหา
 
