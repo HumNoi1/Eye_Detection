@@ -79,21 +79,21 @@ def main():
         test_get_all_users()
         
         # Test 5: Get specific user
-        test_get_user_by_label("person_1")
+        test_get_user_by_label("Frame")
         
         # Test 6: Test caching (query same user again)
         print("\n📦 Testing cache (querying same user again)...")
-        test_get_user_by_label("person_1")
+        test_get_user_by_label("Frame")
         
         # Test 7: Clear cache
         test_clear_cache()
         
         # Test 8: Delete user
-        test_delete_user("person_1")
-        
+        test_delete_user("")
+
         # Test 9: Try to get deleted user (should fail)
-        test_get_user_by_label("person_1")
-        
+        test_get_user_by_label("")
+
         print("\n✅ All tests completed!")
         
     except requests.exceptions.ConnectionError:
