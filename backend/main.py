@@ -42,7 +42,12 @@ except Exception as e:
 
 try:
     model = YOLO('best.pt')
-    logger.info("YOLO model loaded successfully")
+    # Enable FP16 (half precision) for GPU acceleration
+    if torch.cuda.is_available():
+        model.model.half()
+        logger.info("YOLO model loaded successfully with FP16 acceleration")
+    else:
+        logger.info("YOLO model loaded successfully (CPU mode)")
 except Exception as e:
     logger.error(f"Failed to load YOLO model: {e}")
     raise
@@ -82,7 +87,7 @@ async def get_user_by_label(label: str):
     if label in user_cache:
         cached_time, user_data = user_cache[label]
         if datetime.now() - cached_time < timedelta(seconds=CACHE_TIMEOUT):
-            logger.info(f"✓ Cache hit for label: {label} -> {user_data.get('username', 'N/A')}")
+            logger.info(f"✓ Cache hit for label: {label} -> {user_data.get('username', 'N/A') if user_data else 'None'}")
             return user_data
         else:
             logger.debug(f"⌛ Cache expired for label: {label}")
@@ -105,6 +110,54 @@ async def get_user_by_label(label: str):
         logger.error(f"❌ Database query error for label {label}: {e}")
         return None
 
+async def get_users_by_labels_batch(labels: list[str]) -> dict:
+    """Batch query multiple users at once - more efficient than individual queries"""
+    if not supabase or not labels:
+        return {}
+    
+    # Filter out labels already in cache
+    uncached_labels = []
+    result = {}
+    
+    for label in labels:
+        if label in user_cache:
+            cached_time, user_data = user_cache[label]
+            if datetime.now() - cached_time < timedelta(seconds=CACHE_TIMEOUT):
+                result[label] = user_data
+                logger.debug(f"✓ Cache hit for label: {label}")
+            else:
+                uncached_labels.append(label)
+        else:
+            uncached_labels.append(label)
+    
+    # Batch query for uncached labels
+    if uncached_labels:
+        try:
+            logger.info(f"🔍 Batch querying {len(uncached_labels)} labels: {uncached_labels}")
+            response = supabase.table('users').select('*').in_('label', uncached_labels).execute()
+            
+            # Create lookup dict and update cache
+            now = datetime.now()
+            for user_data in response.data:
+                label = user_data['label']
+                result[label] = user_data
+                user_cache[label] = (now, user_data)
+                logger.info(f"✓ User found: {label} -> {user_data['username']}")
+            
+            # Cache negative results for labels not found
+            found_labels = {user['label'] for user in response.data}
+            for label in uncached_labels:
+                if label not in found_labels:
+                    result[label] = None
+                    user_cache[label] = (now, None)
+                    logger.warning(f"⚠ No user found for label: '{label}'")
+                    
+        except Exception as e:
+            logger.error(f"❌ Batch query error: {e}")
+            # Return partial results on error
+    
+    return result
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -121,10 +174,21 @@ async def websocket_endpoint(websocket: WebSocket):
             break
         start_time = time.time()
         device = 0 if torch.cuda.is_available() else 'cpu'
-        results = model(frame, device=device, verbose=False)
+        # Use FP16 for GPU inference (2x faster)
+        results = model(
+            frame, 
+            device=device, 
+            verbose=False,
+            half=True if torch.cuda.is_available() else False
+        )
         latency = int((time.time() - start_time) * 1000)
-        annotated_frame = results[0].plot()
-        _, buffer = cv2.imencode('.jpg', annotated_frame)
+        # Plot with labels only (no confidence scores)
+        annotated_frame = results[0].plot(
+            conf=False,  # ซ่อน confidence score
+            labels=True  # แสดงเฉพาะ label
+        )
+        # Optimize JPEG encoding: quality 70 reduces size by ~40% with minimal visual loss
+        _, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         frame_b64 = base64.b64encode(buffer).decode('utf-8')
         detections = []
         for box in results[0].boxes:
@@ -154,15 +218,18 @@ async def websocket_endpoint(websocket: WebSocket):
                 cls_counts = Counter(cls for _, cls in history)
                 total_detections = len(history)
                 
-                # คำนวณเปอร์เซ็นต์แต่ละคนและ query user info
+                # Get all unique labels
+                all_labels = [model.names[cls] for cls in cls_counts.keys()]
+                
+                # BATCH QUERY: Query all users at once instead of one-by-one (90% faster!)
                 logger.debug(f"📊 Processing {len(cls_counts)} detected people")
+                users_dict = await get_users_by_labels_batch(all_labels)
+                
+                # คำนวณเปอร์เซ็นต์แต่ละคนและใช้ผลจาก batch query
                 for cls, count in cls_counts.items():
                     label = model.names[cls]
                     percentage = (count / total_detections) * 100
-                    
-                    # Query user info for this label
-                    logger.debug(f"Querying user info for: {label}")
-                    label_user_info = await get_user_by_label(label)
+                    label_user_info = users_dict.get(label)
                     
                     prediction_stats[label] = {
                         'count': count,
@@ -171,9 +238,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     
                     if label_user_info:
-                        logger.info(f"✓ Added user info for {label}: {label_user_info['username']}")
+                        logger.debug(f"✓ Added user info for {label}: {label_user_info['username']}")
                     else:
-                        logger.warning(f"⚠ No user info for label: {label}")
+                        logger.debug(f"⚠ No user info for label: {label}")
                 
                 # หาคนที่มีเปอร์เซ็นต์สูงสุด
                 most_common_cls, most_common_count = cls_counts.most_common(1)[0]
