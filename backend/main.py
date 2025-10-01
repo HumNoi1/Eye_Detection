@@ -40,14 +40,12 @@ except Exception as e:
     logger.error(f"Failed to initialize Supabase client: {e}")
     supabase = None
 
+# Model configuration
+CONFIDENCE_THRESHOLD = 0.25  # Confidence threshold for detection (can be modified)
+
 try:
     model = YOLO('best.pt')
-    # Enable FP16 (half precision) for GPU acceleration
-    if torch.cuda.is_available():
-        model.model.half()
-        logger.info("YOLO model loaded successfully with FP16 acceleration")
-    else:
-        logger.info("YOLO model loaded successfully (CPU mode)")
+    logger.info(f"YOLO model loaded successfully (Confidence threshold: {CONFIDENCE_THRESHOLD})")
 except Exception as e:
     logger.error(f"Failed to load YOLO model: {e}")
     raise
@@ -174,12 +172,12 @@ async def websocket_endpoint(websocket: WebSocket):
             break
         start_time = time.time()
         device = 0 if torch.cuda.is_available() else 'cpu'
-        # Use FP16 for GPU inference (2x faster)
+        # Run inference with confidence threshold
         results = model(
             frame, 
             device=device, 
             verbose=False,
-            half=True if torch.cuda.is_available() else False
+            conf=CONFIDENCE_THRESHOLD  # Use configurable confidence threshold
         )
         latency = int((time.time() - start_time) * 1000)
         # Plot with labels only (no confidence scores)
@@ -382,7 +380,36 @@ async def health_check():
         "status": "healthy",
         "database": "connected" if supabase else "disconnected",
         "cache_size": len(user_cache),
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "confidence_threshold": CONFIDENCE_THRESHOLD
+    }
+
+@app.get("/config/confidence")
+async def get_confidence():
+    """Get current confidence threshold"""
+    return {
+        "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "description": "Confidence threshold for YOLO detection (0.0 - 1.0)"
+    }
+
+@app.post("/config/confidence")
+async def set_confidence(confidence: float):
+    """Set confidence threshold for YOLO detection"""
+    global CONFIDENCE_THRESHOLD
+    
+    if not 0.0 <= confidence <= 1.0:
+        raise HTTPException(status_code=400, detail="Confidence must be between 0.0 and 1.0")
+    
+    old_value = CONFIDENCE_THRESHOLD
+    CONFIDENCE_THRESHOLD = confidence
+    
+    logger.info(f"Confidence threshold changed: {old_value} → {CONFIDENCE_THRESHOLD}")
+    
+    return {
+        "success": True,
+        "old_value": old_value,
+        "new_value": CONFIDENCE_THRESHOLD,
+        "message": f"Confidence threshold updated to {CONFIDENCE_THRESHOLD}"
     }
 
 if __name__ == "__main__":
