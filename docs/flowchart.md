@@ -229,4 +229,103 @@ npx -y @mermaid-js/mermaid-cli -i docs/diagrams/system_flow.mmd -o docs/diagrams
 ```
 
 ---
-หากต้องการให้ผมเพิ่ม script ลงใน `frontend/package.json` ตอนนี้ แจ้งได้เลยครับ หรือถ้าต้องการสร้าง root package.json แยกสำหรับ docs ก็ทำได้เช่นกัน
+## 9. Combined Frontend + Backend Detailed Flow
+ด้านล่างเป็น Flowchart แบบรวม (Frontend + Backend) ตามที่ผู้ใช้ระบุ เพิ่มเติมจาก Diagram เดิมเพื่อให้เห็นการประสานงานเต็มวงจร และมีการไฮไลท์ขั้นตอนสำคัญด้วยสี
+
+```mermaid
+graph TB
+    Start([เริ่มต้น]) --> UserClick[ผู้ใช้กดปุ่ม 'เปิดกล้อง']
+    
+    UserClick --> WSConnect[สร้าง WebSocket Connection<br/>ws://localhost:8000/ws]
+    
+    WSConnect --> BackendAccept{Backend รับ<br/>Connection?}
+    
+    BackendAccept -->|ไม่สำเร็จ| ErrorMsg[แสดงข้อความ Error]
+    BackendAccept -->|สำเร็จ| OpenCamera[Backend: เปิดกล้อง<br/>cv2.VideoCapture]
+    
+    ErrorMsg --> End([จบการทำงาน])
+    
+    OpenCamera --> CameraCheck{กล้องเปิด<br/>สำเร็จ?}
+    
+    CameraCheck -->|ไม่สำเร็จ| SendError[ส่ง error message<br/>ปิด WebSocket]
+    CameraCheck -->|สำเร็จ| LoopStart[เริ่ม Loop]
+    
+    SendError --> End
+    
+    LoopStart --> ReadFrame[อ่าน Frame จากกล้อง]
+    
+    ReadFrame --> FrameCheck{อ่าน Frame<br/>สำเร็จ?}
+    
+    FrameCheck -->|ไม่สำเร็จ| ReleaseCamera[ปิดกล้อง<br/>cap.release]
+    FrameCheck -->|สำเร็จ| RunYOLO[รัน YOLO Model<br/>ตรวจจับวัตถุ]
+    
+    ReleaseCamera --> End
+    
+    RunYOLO --> CalcLatency[คำนวณ Latency<br/>time.time - start_time]
+    
+    CalcLatency --> Annotate[วาด Bounding Boxes<br/>บน Frame]
+    
+    Annotate --> EncodeFrame[Encode Frame เป็น<br/>Base64 JPEG]
+    
+    EncodeFrame --> ExtractDetect[แยกข้อมูล Detections<br/>x1,y1,x2,y2,conf,cls]
+    
+    ExtractDetect --> UpdateHistory[อัพเดท History<br/>เก็บ 10 วินาทีล่าสุด]
+    
+    UpdateHistory --> CleanOld[ลบข้อมูลเก่า<br/>เกิน 10 วินาที]
+    
+    CleanOld --> CountClasses[นับจำนวนแต่ละ Class<br/>ใน History]
+    
+    CountClasses --> PredictMost[หา Class ที่เจอ<br/>บ่อยที่สุด]
+    
+    PredictMost --> CalcFPS[คำนวณ FPS]
+    
+    CalcFPS --> CreateLog[สร้าง Log Message]
+    
+    CreateLog --> PrepareData[จัดเตรียม JSON Data:<br/>frame, detections, fps,<br/>latency, log, predicted]
+    
+    PrepareData --> SendWS{ส่งข้อมูล<br/>ผ่าน WebSocket}
+    
+    SendWS -->|สำเร็จ| Sleep[รอ 0.03 วินาที]
+    SendWS -->|ไม่สำเร็จ| ReleaseCamera
+    
+    Sleep --> LoopStart
+    
+    %% Frontend Flow
+    WSConnect -.->|เมื่อได้รับข้อมูล| ReceiveData[Frontend: รับ JSON Data]
+    
+    ReceiveData --> ParseJSON[Parse JSON]
+    
+    ParseJSON --> CheckError{มี error?}
+    
+    CheckError -->|มี| ShowError[แสดง Error ใน Logs]
+    CheckError -->|ไม่มี| UpdateState[อัพเดท State:<br/>fps, latency, predicted]
+    
+    ShowError --> WaitNext[รอข้อมูลชุดถัดไป]
+    
+    UpdateState --> AddLog[เพิ่ม Log<br/>เก็บ 10 รายการล่าสุด]
+    
+    AddLog --> DecodeFrame[Decode Base64<br/>เป็น Image]
+    
+    DecodeFrame --> DrawCanvas[วาดภาพบน Canvas<br/>640x480]
+    
+    DrawCanvas --> WaitNext
+    
+    WaitNext -.-> ReceiveData
+    
+    %% User Stop
+    UserClick -.->|กดปิดกล้อง| CloseWS[ปิด WebSocket]
+    CloseWS --> UpdateStatus[อัพเดทสถานะ:<br/>disconnected]
+    UpdateStatus --> End
+    
+    style Start fill:#e1f5e1
+    style End fill:#ffe1e1
+    style RunYOLO fill:#fff4e1
+    style PredictMost fill:#e1f0ff
+    style DrawCanvas fill:#f0e1ff
+```
+
+> หมายเหตุ: หากต้องการ export diagram นี้เป็น PNG เพิ่ม คำสั่ง:
+```powershell
+npx -y @mermaid-js/mermaid-cli -i docs/flowchart.md -o docs/diagrams/combined_flow.png -w 1800 -t default
+```
+(หรือจะแยกออกเป็นไฟล์ `.mmd` ภายหลัง)
