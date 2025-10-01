@@ -158,7 +158,8 @@ async def websocket_endpoint(websocket: WebSocket):
         current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time - prev_time > 0 else 0
         prev_time = current_time
-        log = f"Detected: {', '.join([f'{model.names[int(d['cls'])]} (conf: {d['conf']:.2f})' for d in detections])} at {time.strftime('%H:%M:%S')}" if detections else ""
+        detection_texts = [f"{model.names[int(d['cls'])]}: {d['conf']:.2f}" for d in detections]
+        log = f"Detected: {', '.join(detection_texts)} at {time.strftime('%H:%M:%S')}" if detections else ""
         data = {
             'frame': frame_b64,
             'detections': detections,

@@ -1,0 +1,22 @@
+sequenceDiagram
+  participant U as User
+  participant FE as Frontend (Next.js)
+  participant BE as Backend (FastAPI)
+  participant CV as Camera
+  participant YOLO as Model
+
+  U->>FE: Open /camera page
+  FE->>BE: WebSocket connect /ws
+  BE->>CV: Open camera
+  loop Real-time
+    CV-->>BE: Frame
+    BE->>YOLO: Inference(frame)
+    YOLO-->>BE: Boxes + Classes + Conf
+    BE->>BE: Update history & predicted
+    BE->>BE: Annotate + Encode Base64
+    BE-->>FE: JSON(frame + detections + stats)
+    FE-->>U: Render view
+  end
+  U-->>FE: Close page / disconnect
+  FE-->>BE: Close WS
+  BE->>CV: Release camera
