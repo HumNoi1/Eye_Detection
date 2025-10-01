@@ -34,12 +34,7 @@ export default function Home() {
             >
               เริ่มใช้งาน (Start)
             </Link>
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center rounded-xl border border-foreground px-6 py-3 text-foreground transition hover:bg-foreground hover:text-background active:opacity-80"
-            >
-              สมัครสมาชิก (Register)
-            </Link>
+            
           </div>
 
           {/* Feature bullets */}
