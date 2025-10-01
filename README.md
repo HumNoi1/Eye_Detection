@@ -17,7 +17,7 @@
 </div>
 
 ### Main Features
-- 🎯 Real-time face detection with YOLOv8
+- 🎯 Real-time face detection with YOLO11n
 - 👤 Face recognition with database integration
 - 📊 Live statistics dashboard
 - 🌓 Dark/Light mode support
@@ -39,7 +39,7 @@
 ## ✨ คุณสมบัติ
 
 ### 🎯 Core Features
-- ✅ **Real-time Face Detection** - ตรวจจับใบหน้าจากกล้องแบบ real-time ด้วย YOLOv8
+- ✅ **Real-time Face Detection** - ตรวจจับใบหน้าจากกล้องแบบ real-time ด้วย YOLO11n
 - ✅ **Face Recognition** - ระบุตัวตนด้วยโมเดลที่ train เอง (best.pt)
 - ✅ **5-Second Sliding Window** - วิเคราะห์ 5 วินาทีล่าสุดเพื่อความแม่นยำสูง
 - ✅ **Percentage-based Prediction** - แสดงเปอร์เซ็นต์ความมั่นใจของแต่ละคน
@@ -65,7 +65,7 @@
 
 ### Backend
 - **FastAPI** - Web framework สำหรับ Python
-- **YOLOv8 (Ultralytics)** - Object detection model
+- **YOLO11n (Ultralytics)** - Object detection model
 - **OpenCV** - Computer vision library
 - **PyTorch** - Deep learning framework
 - **Supabase** - PostgreSQL database และ authentication
@@ -198,18 +198,21 @@ Eark            Thensin Chuangkeattichai  65020946
 ✅ All tests passed! Database is ready to use.
 ```
 
-### 4. ตั้งค่า YOLO Model
+### 4. ตั้งค่า YOLO11n Model
 
 วาง trained model (`best.pt`) ในโฟลเดอร์ `backend/`:
 
 ```
 backend/
-├── best.pt          # Your trained YOLO model
+├── best.pt          # Your trained YOLO11n model
 ├── main.py
 └── ...
 ```
 
-**หมายเหตุ:** Label ใน YOLO model ต้องตรงกับ column `label` ใน database (case-sensitive)
+**หมายเหตุ:** 
+- Label ใน YOLO11n model ต้องตรงกับ column `label` ใน database (case-sensitive)
+- ถ้ายังไม่มี trained model สามารถใช้ pretrained YOLO11n ได้ (จะดาวน์โหลดอัตโนมัติ)
+- ดูวิธีการ train model ที่ [YOLO11_INFO.md](YOLO11_INFO.md)
 
 ### 5. ตั้งค่า Frontend (Optional)
 
@@ -295,8 +298,8 @@ Eye_Detection/
 │   ├── test_database.py          # Database connection test
 │   ├── test_api.py               # API endpoint tests
 │   ├── requirements.txt          # Python dependencies
-│   ├── best.pt                   # Trained YOLO model
-│   ├── yolov8n.pt               # Base YOLO model (backup)
+│   ├── best.pt                   # Trained YOLO11n model
+│   ├── yolo11n.pt               # Base YOLO11n model (backup)
 │   ├── .env                      # Environment variables (create this)
 │   ├── .env.example             # Environment template
 │   └── README.md                # Backend documentation
@@ -318,6 +321,9 @@ Eye_Detection/
 │
 ├── README.md                     # Main documentation (this file)
 ├── TROUBLESHOOTING.md           # Troubleshooting guide
+├── CONTRIBUTING.md              # Contributing guidelines
+├── YOLO11_INFO.md               # YOLO11n model information
+├── LICENSE                       # MIT License
 └── .gitignore                   # Git ignore rules
 ```
 
@@ -500,7 +506,7 @@ curl http://localhost:8000/health
 **วิธีแก้:**
 1. ใช้ GPU ถ้ามี (ต้องติดตั้ง CUDA)
 2. ลด frame rate ในโค้ด
-3. ใช้ model ที่เล็กกว่า (yolov8n.pt)
+3. ใช้ model ที่เล็กกว่า (yolo11n.pt เป็น nano version แล้ว)
 
 ### ดูเอกสารเพิ่มเติม
 
@@ -534,7 +540,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics) - Object detection model
+- [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics) - Object detection model
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework
 - [Next.js](https://nextjs.org/) - React framework
 - [Supabase](https://supabase.com/) - Backend platform

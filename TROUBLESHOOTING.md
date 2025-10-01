@@ -78,7 +78,7 @@ python3 test_database.py
 # ไปที่ Supabase Dashboard → Table Editor → users
 # ดูว่า column 'label' มีค่าอะไรบ้าง
 
-# เช็ค labels ที่ YOLO model detect
+# เช็ค labels ที่ YOLO11n model detect
 # ดู backend terminal logs ขณะรันระบบ
 ```
 
@@ -86,11 +86,11 @@ python3 test_database.py
 ```
 ⚠ No user found for label: 'poom' in database
 ```
-→ แปลว่า YOLO detect "poom" แต่ใน database มี "Poom" (case-sensitive!)
+→ แปลว่า YOLO11n detect "poom" แต่ใน database มี "Poom" (case-sensitive!)
 
 **วิธีแก้:**
-1. แก้ label ใน database ให้ตรงกับ YOLO
-2. หรือ train YOLO model ใหม่ให้ตรงกับ database
+1. แก้ label ใน database ให้ตรงกับ YOLO11n
+2. หรือ train YOLO11n model ใหม่ให้ตรงกับ database
 
 ### ❌ Error: `supabase.table('users').select('*')` fails
 
@@ -250,8 +250,8 @@ python3 -c "import torch; print(torch.cuda.is_available())"
 # ลด confidence threshold
 results = model(frame, device=device, verbose=False, conf=0.5)  # เพิ่มจาก 0.25
 
-# หรือใช้ model ที่เล็กกว่า
-model = YOLO('yolov8n.pt')  # nano version (เร็วกว่า)
+# หรือใช้ model ที่เล็กกว่า (ถ้าเทรนจาก yolo11s หรือใหญ่กว่า)
+model = YOLO('yolo11n.pt')  # nano version (เล็กและเร็วที่สุด)
 ```
 
 **สาเหตุ #3:** Network latency
@@ -299,8 +299,9 @@ gc.collect()
 # วาง trained model ไว้ใน backend/
 cp /path/to/your/best.pt backend/best.pt
 
-# หรือใช้ pretrained model
+# หรือใช้ pretrained YOLO11n model
 # ดาวน์โหลดจาก https://github.com/ultralytics/assets/releases
+# หรือใช้โค้ด: model = YOLO('yolo11n.pt')  # จะดาวน์โหลดอัตโนมัติ
 ```
 
 ### ❌ Frontend ไม่โหลด / blank page
