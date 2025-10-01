@@ -1,6 +1,9 @@
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.6
-ultralytics>=8.3.0
-opencv-python==4.8.1.78
-numpy==1.24.3
+fastapi
+uvicorn
+python-multipart
+ultralytics
+opencv-python
+numpy
+supabase
+python-dotenv
+

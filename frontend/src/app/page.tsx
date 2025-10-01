@@ -34,6 +34,16 @@ export default function Home() {
             </Link>
             
           </div>
+          {/* CTA buttons */}
+          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-xl bg-foreground px-6 py-3 text-background transition hover:opacity-90 active:opacity-80"
+            >
+              Dashboard (Start)
+            </Link>
+            
+          </div>
 
           
 
