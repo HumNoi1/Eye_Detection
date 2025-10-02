@@ -44,7 +44,7 @@ except Exception as e:
 CONFIDENCE_THRESHOLD = 0.25  # Confidence threshold for detection (can be modified)
 
 try:
-    model = YOLO('best.pt')
+    model = YOLO('last.pt')
     logger.info(f"YOLO model loaded successfully (Confidence threshold: {CONFIDENCE_THRESHOLD})")
 except Exception as e:
     logger.error(f"Failed to load YOLO model: {e}")
