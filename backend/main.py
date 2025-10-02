@@ -76,7 +76,7 @@ class UserResponse(BaseModel):
     created_at: str
 
 async def get_user_by_label(label: str):
-    """Query user from database by label with caching"""
+    """Query user from database by label with flexible matching (full label, name, or student_id)"""
     if not supabase:
         logger.error(f"❌ Supabase client not initialized! Cannot query user for label: {label}")
         return None
@@ -90,26 +90,60 @@ async def get_user_by_label(label: str):
         else:
             logger.debug(f"⌛ Cache expired for label: {label}")
     
-    # Query from database
+    # Query from database with multiple strategies
     try:
         logger.info(f"🔍 Querying database for label: {label}")
+        
+        # Strategy 1: Try exact match first
         response = supabase.table('users').select('*').eq('label', label).execute()
         if response.data and len(response.data) > 0:
             user_data = response.data[0]
             user_cache[label] = (datetime.now(), user_data)
-            logger.info(f"✓ User found: {label} -> {user_data['username']} (ID: {user_data['student_id']})")
+            logger.info(f"✓ Exact match found: {label} -> {user_data['username']} (ID: {user_data['student_id']})")
             return user_data
-        else:
-            logger.warning(f"⚠ No user found for label: '{label}' in database")
-            # Cache negative result to avoid repeated queries
-            user_cache[label] = (datetime.now(), None)
-            return None
+        
+        # Strategy 2: Split label and try matching individual parts
+        # Split by space to get parts like "Poom" and "65025367"
+        parts = label.strip().split()
+        if len(parts) > 1:
+            logger.info(f"🔎 No exact match. Trying individual parts: {parts}")
+            
+            # Try each part as label, username, or student_id
+            for part in parts:
+                # Try as label
+                response = supabase.table('users').select('*').eq('label', part).execute()
+                if response.data and len(response.data) > 0:
+                    user_data = response.data[0]
+                    user_cache[label] = (datetime.now(), user_data)
+                    logger.info(f"✓ Match found by label part '{part}': {user_data['username']} (ID: {user_data['student_id']})")
+                    return user_data
+                
+                # Try as username
+                response = supabase.table('users').select('*').ilike('username', part).execute()
+                if response.data and len(response.data) > 0:
+                    user_data = response.data[0]
+                    user_cache[label] = (datetime.now(), user_data)
+                    logger.info(f"✓ Match found by username '{part}': {user_data['username']} (ID: {user_data['student_id']})")
+                    return user_data
+                
+                # Try as student_id
+                response = supabase.table('users').select('*').eq('student_id', part).execute()
+                if response.data and len(response.data) > 0:
+                    user_data = response.data[0]
+                    user_cache[label] = (datetime.now(), user_data)
+                    logger.info(f"✓ Match found by student_id '{part}': {user_data['username']} (ID: {user_data['student_id']})")
+                    return user_data
+        
+        logger.warning(f"⚠ No user found for label: '{label}' or its parts in database")
+        # Cache negative result to avoid repeated queries
+        user_cache[label] = (datetime.now(), None)
+        return None
     except Exception as e:
         logger.error(f"❌ Database query error for label {label}: {e}")
         return None
 
 async def get_users_by_labels_batch(labels: list[str]) -> dict:
-    """Batch query multiple users at once - more efficient than individual queries"""
+    """Batch query multiple users at once with flexible matching"""
     if not supabase or not labels:
         return {}
     
@@ -132,23 +166,30 @@ async def get_users_by_labels_batch(labels: list[str]) -> dict:
     if uncached_labels:
         try:
             logger.info(f"🔍 Batch querying {len(uncached_labels)} labels: {uncached_labels}")
+            
+            # Try exact match first
             response = supabase.table('users').select('*').in_('label', uncached_labels).execute()
             
             # Create lookup dict and update cache
             now = datetime.now()
             for user_data in response.data:
                 label = user_data['label']
-                result[label] = user_data
-                user_cache[label] = (now, user_data)
-                logger.info(f"✓ User found: {label} -> {user_data['username']}")
+                # Find original label that matches this user
+                for orig_label in uncached_labels:
+                    if label == orig_label or label in orig_label.split():
+                        result[orig_label] = user_data
+                        user_cache[orig_label] = (now, user_data)
+                        logger.info(f"✓ User found: {orig_label} -> {user_data['username']}")
             
-            # Cache negative results for labels not found
-            found_labels = {user['label'] for user in response.data}
-            for label in uncached_labels:
-                if label not in found_labels:
-                    result[label] = None
-                    user_cache[label] = (now, None)
-                    logger.warning(f"⚠ No user found for label: '{label}'")
+            # For labels not found, try flexible matching
+            found_labels = set(result.keys())
+            unfound_labels = [lbl for lbl in uncached_labels if lbl not in found_labels]
+            
+            for label in unfound_labels:
+                # Try flexible matching for this label
+                user_data = await get_user_by_label(label)  # This will handle the flexible matching
+                result[label] = user_data
+                # Cache is already updated in get_user_by_label
                     
         except Exception as e:
             logger.error(f"❌ Batch query error: {e}")
