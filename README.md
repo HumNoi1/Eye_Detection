@@ -3,7 +3,7 @@
 ระบบตรวจจับและระบุตัวตนด้วย Face Recognition แบบ Real-time พร้อมการเชื่อมต่อกับ Supabase Database
 
 ![Status](https://img.shields.io/badge/status-active-success.svg)
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10-blue.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00a393.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-15.5-black.svg)
